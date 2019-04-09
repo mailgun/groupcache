@@ -117,7 +117,7 @@ func beChildForTestHTTPPool() {
 	p.Set(addrToURL(addrs)...)
 
 	getter := GetterFunc(func(ctx Context, key string, dest Sink) error {
-		dest.SetString(strconv.Itoa(*peerIndex) + ":" + key)
+		dest.SetString(strconv.Itoa(*peerIndex)+":"+key, time.Time{})
 		return nil
 	})
 	NewGroup("httpPoolTest", 1<<20, getter)

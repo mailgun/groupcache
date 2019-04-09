@@ -19,6 +19,7 @@ package lru
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 type simpleStruct struct {
@@ -48,7 +49,7 @@ var getTests = []struct {
 func TestGet(t *testing.T) {
 	for _, tt := range getTests {
 		lru := New(0)
-		lru.Add(tt.keyToAdd, 1234)
+		lru.Add(tt.keyToAdd, 1234, time.Time{})
 		val, ok := lru.Get(tt.keyToGet)
 		if ok != tt.expectedOk {
 			t.Fatalf("%s: cache hit = %v; want %v", tt.name, ok, !ok)
@@ -60,7 +61,7 @@ func TestGet(t *testing.T) {
 
 func TestRemove(t *testing.T) {
 	lru := New(0)
-	lru.Add("myKey", 1234)
+	lru.Add("myKey", 1234, time.Time{})
 	if val, ok := lru.Get("myKey"); !ok {
 		t.Fatal("TestRemove returned no match")
 	} else if val != 1234 {
@@ -82,7 +83,7 @@ func TestEvict(t *testing.T) {
 	lru := New(20)
 	lru.OnEvicted = onEvictedFun
 	for i := 0; i < 22; i++ {
-		lru.Add(fmt.Sprintf("myKey%d", i), 1234)
+		lru.Add(fmt.Sprintf("myKey%d", i), 1234, time.Time{})
 	}
 
 	if len(evictedKeys) != 2 {
@@ -93,5 +94,30 @@ func TestEvict(t *testing.T) {
 	}
 	if evictedKeys[1] != Key("myKey1") {
 		t.Fatalf("got %v in second evicted key; want %s", evictedKeys[1], "myKey1")
+	}
+}
+
+func TestExpire(t *testing.T) {
+	var tests = []struct {
+		name       string
+		key        interface{}
+		expectedOk bool
+		expire     time.Duration
+		wait       time.Duration
+	}{
+		{"not-expired", "myKey", true, time.Second * 1, time.Duration(0)},
+		{"expired", "expiredKey", false, time.Millisecond * 100, time.Millisecond * 150},
+	}
+
+	for _, tt := range tests {
+		lru := New(0)
+		lru.Add(tt.key, 1234, time.Now().Add(tt.expire))
+		time.Sleep(tt.wait)
+		val, ok := lru.Get(tt.key)
+		if ok != tt.expectedOk {
+			t.Fatalf("%s: cache hit = %v; want %v", tt.name, ok, !ok)
+		} else if ok && val != 1234 {
+			t.Fatalf("%s expected get to return 1234 but got %v", tt.name, val)
+		}
 	}
 }

@@ -163,15 +163,27 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group.Stats.ServerRequests.Add(1)
-	var value []byte
-	err := group.Get(ctx, key, AllocatingByteSliceSink(&value))
+	var b []byte
+
+	value := AllocatingByteSliceSink(&b)
+	err := group.Get(ctx, key, value)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	view, err := value.view()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var expireNano int64
+	if !view.e.IsZero() {
+		expireNano = view.Expire().UnixNano()
+	}
+
 	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.GetResponse{Value: value})
+	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
