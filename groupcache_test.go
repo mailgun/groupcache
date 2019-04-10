@@ -36,8 +36,8 @@ import (
 )
 
 var (
-	once                    sync.Once
-	stringGroup, protoGroup Getter
+	once                                 sync.Once
+	stringGroup, protoGroup, expireGroup Getter
 
 	stringc = make(chan string)
 
@@ -52,6 +52,7 @@ var (
 const (
 	stringGroupName = "string-group"
 	protoGroupName  = "proto-group"
+	expireGroupName = "expire-group"
 	testMessageType = "google3/net/groupcache/go/test_proto.TestMessage"
 	fromChan        = "from-chan"
 	cacheSize       = 1 << 20
@@ -63,7 +64,7 @@ func testSetup() {
 			key = <-stringc
 		}
 		cacheFills.Add(1)
-		return dest.SetString("ECHO:" + key)
+		return dest.SetString("ECHO:"+key, time.Time{})
 	}))
 
 	protoGroup = NewGroup(protoGroupName, cacheSize, GetterFunc(func(_ Context, key string, dest Sink) error {
@@ -74,7 +75,12 @@ func testSetup() {
 		return dest.SetProto(&testpb.TestMessage{
 			Name: proto.String("ECHO:" + key),
 			City: proto.String("SOME-CITY"),
-		})
+		}, time.Time{})
+	}))
+
+	expireGroup = NewGroup(expireGroupName, cacheSize, GetterFunc(func(_ Context, key string, dest Sink) error {
+		cacheFills.Add(1)
+		return dest.SetString("ECHO:"+key, time.Now().Add(time.Millisecond*100))
 	}))
 }
 
@@ -185,6 +191,24 @@ func TestCaching(t *testing.T) {
 	}
 }
 
+func TestCachingExpire(t *testing.T) {
+	once.Do(testSetup)
+	fills := countFills(func() {
+		for i := 0; i < 3; i++ {
+			var s string
+			if err := expireGroup.Get(dummyCtx, "TestCachingExpire-key", StringSink(&s)); err != nil {
+				t.Fatal(err)
+			}
+			if i == 1 {
+				time.Sleep(time.Millisecond * 150)
+			}
+		}
+	})
+	if fills != 2 {
+		t.Errorf("expected 2 cache fill; got %d", fills)
+	}
+}
+
 func TestCacheEviction(t *testing.T) {
 	once.Do(testSetup)
 	testKey := "TestCacheEviction-key"
@@ -261,7 +285,7 @@ func TestPeers(t *testing.T) {
 	localHits := 0
 	getter := func(_ Context, key string, dest Sink) error {
 		localHits++
-		return dest.SetString("got:" + key)
+		return dest.SetString("got:"+key, time.Time{})
 	}
 	testGroup := newGroup("TestPeers-group", cacheSize, GetterFunc(getter), peerList)
 	run := func(name string, n int, wantSummary string) {
@@ -345,7 +369,7 @@ func TestAllocatingByteSliceTarget(t *testing.T) {
 	sink := AllocatingByteSliceSink(&dst)
 
 	inBytes := []byte("some bytes")
-	sink.SetBytes(inBytes)
+	sink.SetBytes(inBytes, time.Time{})
 	if want := "some bytes"; string(dst) != want {
 		t.Errorf("SetBytes resulted in %q; want %q", dst, want)
 	}
@@ -388,7 +412,7 @@ func TestNoDedup(t *testing.T) {
 	const testkey = "testkey"
 	const testval = "testval"
 	g := newGroup("testgroup", 1024, GetterFunc(func(_ Context, key string, dest Sink) error {
-		return dest.SetString(testval)
+		return dest.SetString(testval, time.Time{})
 	}), nil)
 
 	orderedGroup := &orderedFlightGroup{

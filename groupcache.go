@@ -30,6 +30,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	pb "github.com/golang/groupcache/groupcachepb"
 	"github.com/golang/groupcache/lru"
@@ -310,7 +311,16 @@ func (g *Group) getFromPeer(ctx Context, peer ProtoGetter, key string) (ByteView
 	if err != nil {
 		return ByteView{}, err
 	}
-	value := ByteView{b: res.Value}
+
+	var expire time.Time
+	if res.Expire != nil && *res.Expire != 0 {
+		expire = time.Unix(*res.Expire/int64(time.Second), *res.Expire%int64(time.Second))
+		if time.Now().After(expire) {
+			return ByteView{}, errors.New("peer returned expired value")
+		}
+	}
+
+	value := ByteView{b: res.Value, e: expire}
 	// TODO(bradfitz): use res.MinuteQps or something smart to
 	// conditionally populate hotCache.  For now just do it some
 	// percentage of the time.
@@ -418,7 +428,7 @@ func (c *cache) add(key string, value ByteView) {
 			},
 		}
 	}
-	c.lru.Add(key, value)
+	c.lru.Add(key, value, value.Expire())
 	c.nbytes += int64(len(key)) + int64(value.Len())
 }
 
