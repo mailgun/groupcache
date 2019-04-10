@@ -1,5 +1,5 @@
 language: go
-go_import_path: github.com/golang/groupcache
+go_import_path: github.com/mailgun/groupcache
 
 os: linux
 dist: trusty
