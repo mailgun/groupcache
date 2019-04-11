@@ -263,6 +263,14 @@ func (p *fakePeer) Get(_ Context, in *pb.GetRequest, out *pb.GetResponse) error 
 	return nil
 }
 
+func (p *fakePeer) Remove(_ Context, in *pb.GetRequest) error {
+	p.hits++
+	if p.fail {
+		return errors.New("simulated error from peer")
+	}
+	return nil
+}
+
 type fakePeers []ProtoGetter
 
 func (p fakePeers) PickPeer(key string) (peer ProtoGetter, ok bool) {
@@ -271,6 +279,10 @@ func (p fakePeers) PickPeer(key string) (peer ProtoGetter, ok bool) {
 	}
 	n := crc32.Checksum([]byte(key), crc32.IEEETable) % uint32(len(p))
 	return p[n], p[n] != nil
+}
+
+func (p fakePeers) GetAll() []ProtoGetter {
+	return p
 }
 
 // tests that peers (virtual, in-process) are hit, and how much.
@@ -404,6 +416,10 @@ func (g *orderedFlightGroup) Do(key string, fn func() (interface{}, error)) (int
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.orig.Do(key, fn)
+}
+
+func (g *orderedFlightGroup) Lock(fn func()) {
+	fn()
 }
 
 // TestNoDedup tests invariants on the cache size when singleflight is

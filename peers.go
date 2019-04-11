@@ -30,6 +30,7 @@ type Context interface{}
 // ProtoGetter is the interface that must be implemented by a peer.
 type ProtoGetter interface {
 	Get(context Context, in *pb.GetRequest, out *pb.GetResponse) error
+	Remove(context Context, in *pb.GetRequest) error
 }
 
 // PeerPicker is the interface that must be implemented to locate
@@ -39,12 +40,14 @@ type PeerPicker interface {
 	// and true to indicate that a remote peer was nominated.
 	// It returns nil, false if the key owner is the current peer.
 	PickPeer(key string) (peer ProtoGetter, ok bool)
+	GetAll() []ProtoGetter
 }
 
 // NoPeers is an implementation of PeerPicker that never finds a peer.
 type NoPeers struct{}
 
 func (NoPeers) PickPeer(key string) (peer ProtoGetter, ok bool) { return }
+func (NoPeers) GetAll() []ProtoGetter                           { return []ProtoGetter{} }
 
 var (
 	portPicker func(groupName string) PeerPicker

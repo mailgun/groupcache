@@ -97,11 +97,12 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		panic("duplicate registration of group " + name)
 	}
 	g := &Group{
-		name:       name,
-		getter:     getter,
-		peers:      peers,
-		cacheBytes: cacheBytes,
-		loadGroup:  &singleflight.Group{},
+		name:        name,
+		getter:      getter,
+		peers:       peers,
+		cacheBytes:  cacheBytes,
+		loadGroup:   &singleflight.Group{},
+		removeGroup: &singleflight.Group{},
 	}
 	if fn := newGroupHook; fn != nil {
 		fn(g)
@@ -167,6 +168,10 @@ type Group struct {
 	// concurrent callers.
 	loadGroup flightGroup
 
+	// removeGroup ensures that each removed key is only removed
+	// remotely once regardless of the number of concurrent callers.
+	removeGroup flightGroup
+
 	_ int32 // force Stats to be 8-byte aligned on 32-bit platforms
 
 	// Stats are statistics on the group.
@@ -177,8 +182,8 @@ type Group struct {
 // satisfies.  We define this so that we may test with an alternate
 // implementation.
 type flightGroup interface {
-	// Done is called when Do is done.
 	Do(key string, fn func() (interface{}, error)) (interface{}, error)
+	Lock(fn func())
 }
 
 // Stats are per-group statistics.
@@ -231,6 +236,53 @@ func (g *Group) Get(ctx Context, key string, dest Sink) error {
 		return nil
 	}
 	return setSinkView(dest, value)
+}
+
+// Remove clears the key from our cache then forwards the remove
+// request to all peers.
+func (g *Group) Remove(ctx Context, key string) error {
+	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
+
+		// Remove from key owner first
+		owner, ok := g.peers.PickPeer(key)
+		if ok {
+			if err := g.removeFromPeer(ctx, owner, key); err != nil {
+				return nil, err
+			}
+		}
+		// Remove from our cache first in case we are owner
+		g.localRemove(key)
+		wg := sync.WaitGroup{}
+		errs := make(chan error)
+
+		// Asynchronously clear the key from all hot and main caches of peers
+		for _, peer := range g.peers.GetAll() {
+			// avoid deleting from owner a second time
+			if peer == owner {
+				continue
+			}
+
+			wg.Add(1)
+			go func() {
+				errs <- g.removeFromPeer(ctx, peer, key)
+				wg.Done()
+			}()
+		}
+		go func() {
+			wg.Wait()
+			close(errs)
+		}()
+
+		// TODO(thrawn01): Should we report all errors? Reporting context
+		//  cancelled error for each peer doesn't make much sense.
+		var err error
+		for e := range errs {
+			err = e
+		}
+
+		return nil, err
+	})
+	return err
 }
 
 // load loads key either by invoking the getter locally or by sending it to another machine.
@@ -330,6 +382,14 @@ func (g *Group) getFromPeer(ctx Context, peer ProtoGetter, key string) (ByteView
 	return value, nil
 }
 
+func (g *Group) removeFromPeer(ctx Context, peer ProtoGetter, key string) error {
+	req := &pb.GetRequest{
+		Group: &g.name,
+		Key:   &key,
+	}
+	return peer.Remove(ctx, req)
+}
+
 func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	if g.cacheBytes <= 0 {
 		return
@@ -340,6 +400,19 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	}
 	value, ok = g.hotCache.get(key)
 	return
+}
+
+func (g *Group) localRemove(key string) {
+	// Clear key from our local cache
+	if g.cacheBytes <= 0 {
+		return
+	}
+
+	// Ensure no requests are in flight
+	g.loadGroup.Lock(func() {
+		g.hotCache.remove(key)
+		g.mainCache.remove(key)
+	})
 }
 
 func (g *Group) populateCache(key string, value ByteView, cache *cache) {
@@ -445,6 +518,15 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	}
 	c.nhit++
 	return vi.(ByteView), true
+}
+
+func (c *cache) remove(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.lru == nil {
+		return
+	}
+	c.lru.Remove(key)
 }
 
 func (c *cache) removeOldest() {

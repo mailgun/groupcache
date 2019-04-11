@@ -62,3 +62,12 @@ func (g *Group) Do(key string, fn func() (interface{}, error)) (interface{}, err
 
 	return c.val, c.err
 }
+
+// Lock prevents single flights from occurring for the duration
+// of the provided function. This allows users to clear caches
+// or preform some operation in between running flights.
+func (g *Group) Lock(fn func()) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	fn()
+}
