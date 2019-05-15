@@ -126,6 +126,20 @@ func (p *HTTPPool) Set(peers ...string) {
 	}
 }
 
+// GetAll returns all the peers in the pool
+func (p *HTTPPool) GetAll() []ProtoGetter {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var i int
+	res := make([]ProtoGetter, len(p.httpGetters))
+	for _, v := range p.httpGetters {
+		res[i] = v
+		i++
+	}
+	return res
+}
+
 func (p *HTTPPool) PickPeer(key string) (ProtoGetter, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -163,6 +177,13 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group.Stats.ServerRequests.Add(1)
+
+	// Delete the key and return 200
+	if r.Method == http.MethodDelete {
+		group.localRemove(key)
+		return
+	}
+
 	var b []byte
 
 	value := AllocatingByteSliceSink(&b)
@@ -201,14 +222,14 @@ var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-func (h *httpGetter) Get(context Context, in *pb.GetRequest, out *pb.GetResponse) error {
+func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetRequest, out *http.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
 		url.QueryEscape(in.GetGroup()),
 		url.QueryEscape(in.GetKey()),
 	)
-	req, err := http.NewRequest("GET", u, nil)
+	req, err := http.NewRequest(method, u, nil)
 	if err != nil {
 		return err
 	}
@@ -220,6 +241,15 @@ func (h *httpGetter) Get(context Context, in *pb.GetRequest, out *pb.GetResponse
 	if err != nil {
 		return err
 	}
+	*out = *res
+	return nil
+}
+
+func (h *httpGetter) Get(ctx Context, in *pb.GetRequest, out *pb.GetResponse) error {
+	var res http.Response
+	if err := h.makeRequest(ctx, http.MethodGet, in, &res); err != nil {
+		return err
+	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("server returned: %v", res.Status)
@@ -227,13 +257,25 @@ func (h *httpGetter) Get(context Context, in *pb.GetRequest, out *pb.GetResponse
 	b := bufferPool.Get().(*bytes.Buffer)
 	b.Reset()
 	defer bufferPool.Put(b)
-	_, err = io.Copy(b, res.Body)
+	_, err := io.Copy(b, res.Body)
 	if err != nil {
 		return fmt.Errorf("reading response body: %v", err)
 	}
 	err = proto.Unmarshal(b.Bytes(), out)
 	if err != nil {
 		return fmt.Errorf("decoding response body: %v", err)
+	}
+	return nil
+}
+
+func (h *httpGetter) Remove(ctx Context, in *pb.GetRequest) error {
+	var res http.Response
+	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {
+		return err
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned: %v", res.Status)
 	}
 	return nil
 }
