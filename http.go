@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -273,9 +274,14 @@ func (h *httpGetter) Remove(ctx Context, in *pb.GetRequest) error {
 	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {
 		return err
 	}
-	res.Body.Close()
+	defer res.Body.Close()
+
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned: %v", res.Status)
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("while reading body response: %v", res.Status)
+		}
+		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
 	}
 	return nil
 }

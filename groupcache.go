@@ -241,6 +241,8 @@ func (g *Group) Get(ctx Context, key string, dest Sink) error {
 // Remove clears the key from our cache then forwards the remove
 // request to all peers.
 func (g *Group) Remove(ctx Context, key string) error {
+	g.peersOnce.Do(g.initPeers)
+
 	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
 
 		// Remove from key owner first
@@ -250,7 +252,7 @@ func (g *Group) Remove(ctx Context, key string) error {
 				return nil, err
 			}
 		}
-		// Remove from our cache first in case we are owner
+		// Remove from our cache next
 		g.localRemove(key)
 		wg := sync.WaitGroup{}
 		errs := make(chan error)
