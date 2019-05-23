@@ -252,7 +252,7 @@ func (g *Group) Remove(ctx Context, key string) error {
 				return nil, err
 			}
 		}
-		// Remove from our cache first in case we are owner
+		// Remove from our cache next
 		g.localRemove(key)
 		wg := sync.WaitGroup{}
 		errs := make(chan error)
