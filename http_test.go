@@ -100,11 +100,15 @@ func TestHTTPPool(t *testing.T) {
 	getter := GetterFunc(func(ctx context.Context, key string, dest Sink) error {
 		return errors.New("parent getter called; something's wrong")
 	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
 	g := NewGroup("httpPoolTest", 1<<20, getter)
 
 	for _, key := range testKeys(nGets) {
 		var value string
-		if err := g.Get(nil, key, StringSink(&value)); err != nil {
+		if err := g.Get(ctx, key, StringSink(&value)); err != nil {
 			t.Fatal(err)
 		}
 		if suffix := ":" + key; !strings.HasSuffix(value, suffix) {
@@ -123,7 +127,7 @@ func TestHTTPPool(t *testing.T) {
 
 	// Multiple gets on the same key
 	for i := 0; i < 2; i++ {
-		if err := g.Get(nil, key, StringSink(&value)); err != nil {
+		if err := g.Get(ctx, key, StringSink(&value)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -134,12 +138,12 @@ func TestHTTPPool(t *testing.T) {
 	}
 
 	// Remove the key from the cache and we should see another server hit
-	if err := g.Remove(nil, key); err != nil {
+	if err := g.Remove(ctx, key); err != nil {
 		t.Fatal(err)
 	}
 
 	// Get the key again
-	if err := g.Get(nil, key, StringSink(&value)); err != nil {
+	if err := g.Get(ctx, key, StringSink(&value)); err != nil {
 		t.Fatal(err)
 	}
 
