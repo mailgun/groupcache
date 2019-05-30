@@ -18,6 +18,7 @@ package groupcache
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -223,7 +224,7 @@ var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetRequest, out *http.Response) error {
+func (h *httpGetter) makeRequest(ctx Context, method string, in *pb.GetRequest, out *http.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
@@ -234,9 +235,15 @@ func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetReque
 	if err != nil {
 		return err
 	}
+
+	// If user passed a standard context object, use it in the request.
+	if stdCtx, ok := ctx.(context.Context); ok {
+		req = req.WithContext(stdCtx)
+	}
+
 	tr := http.DefaultTransport
 	if h.transport != nil {
-		tr = h.transport(context)
+		tr = h.transport(ctx)
 	}
 	res, err := tr.RoundTrip(req)
 	if err != nil {
