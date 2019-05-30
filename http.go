@@ -41,12 +41,12 @@ type HTTPPool struct {
 	// Context optionally specifies a context for the server to use when it
 	// receives a request.
 	// If nil, the server uses a nil Context.
-	Context func(*http.Request) Context
+	Context func(*http.Request) context.Context
 
 	// Transport optionally specifies an http.RoundTripper for the client
 	// to use when it makes a request.
 	// If nil, the client uses http.DefaultTransport.
-	Transport func(Context) http.RoundTripper
+	Transport func(context.Context) http.RoundTripper
 
 	// this peer's base URL, e.g. "https://example.net:8000"
 	self string
@@ -173,7 +173,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 		return
 	}
-	var ctx Context
+	var ctx context.Context
 	if p.Context != nil {
 		ctx = p.Context(r)
 	}
@@ -216,7 +216,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type httpGetter struct {
-	transport func(Context) http.RoundTripper
+	transport func(context.Context) http.RoundTripper
 	baseURL   string
 }
 
@@ -224,7 +224,7 @@ var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-func (h *httpGetter) makeRequest(ctx Context, method string, in *pb.GetRequest, out *http.Response) error {
+func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetRequest, out *http.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
@@ -236,10 +236,8 @@ func (h *httpGetter) makeRequest(ctx Context, method string, in *pb.GetRequest, 
 		return err
 	}
 
-	// If user passed a standard context object, use it in the request.
-	if stdCtx, ok := ctx.(context.Context); ok {
-		req = req.WithContext(stdCtx)
-	}
+	// Pass along the context to the RoundTripper
+	req = req.WithContext(ctx)
 
 	tr := http.DefaultTransport
 	if h.transport != nil {
@@ -253,7 +251,7 @@ func (h *httpGetter) makeRequest(ctx Context, method string, in *pb.GetRequest, 
 	return nil
 }
 
-func (h *httpGetter) Get(ctx Context, in *pb.GetRequest, out *pb.GetResponse) error {
+func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodGet, in, &res); err != nil {
 		return err
@@ -276,7 +274,7 @@ func (h *httpGetter) Get(ctx Context, in *pb.GetRequest, out *pb.GetResponse) er
 	return nil
 }
 
-func (h *httpGetter) Remove(ctx Context, in *pb.GetRequest) error {
+func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {
 		return err
