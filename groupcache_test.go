@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"math/rand"
 	"reflect"
 	"sync"
 	"testing"
@@ -33,7 +32,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	pb "github.com/mailgun/groupcache/groupcachepb"
-	testpb "github.com/mailgun/groupcache/testpb"
+	"github.com/mailgun/groupcache/testpb"
 )
 
 var (
@@ -289,7 +288,6 @@ func (p fakePeers) GetAll() []ProtoGetter {
 // tests that peers (virtual, in-process) are hit, and how much.
 func TestPeers(t *testing.T) {
 	once.Do(testSetup)
-	rand.Seed(123)
 	peer0 := &fakePeer{}
 	peer1 := &fakePeer{}
 	peer2 := &fakePeer{}
@@ -339,9 +337,9 @@ func TestPeers(t *testing.T) {
 	resetCacheSize(1 << 20)
 	run("base", 200, "localHits = 49, peers = 51 49 51")
 
-	// Verify cache was hit.  All localHits are gone, and some of
-	// the peer hits (the ones randomly selected to be maybe hot)
-	run("cached_base", 200, "localHits = 0, peers = 49 47 48")
+	// Verify cache was hit.  All localHits and peers are gone as the hotCache has
+	// the data we need
+	run("cached_base", 200, "localHits = 0, peers = 0 0 0")
 	resetCacheSize(0)
 
 	// With one of the peers being down.

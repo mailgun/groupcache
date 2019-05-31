@@ -27,7 +27,6 @@ package groupcache
 import (
 	"context"
 	"errors"
-	"math/rand"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -376,12 +375,9 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	}
 
 	value := ByteView{b: res.Value, e: expire}
-	// TODO(bradfitz): use res.MinuteQps or something smart to
-	// conditionally populate hotCache.  For now just do it some
-	// percentage of the time.
-	if rand.Intn(10) == 0 {
-		g.populateCache(key, value, &g.hotCache)
-	}
+
+	// Always populate the hot cache
+	g.populateCache(key, value, &g.hotCache)
 	return value, nil
 }
 
