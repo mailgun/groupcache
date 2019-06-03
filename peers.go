@@ -20,7 +20,7 @@ package groupcache
 
 import (
 	"context"
-	pb "github.com/mailgun/groupcache/groupcachepb"
+	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 )
 
 // ProtoGetter is the interface that must be implemented by a peer.

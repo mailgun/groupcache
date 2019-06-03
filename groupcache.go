@@ -32,9 +32,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/mailgun/groupcache/groupcachepb"
-	"github.com/mailgun/groupcache/lru"
-	"github.com/mailgun/groupcache/singleflight"
+	pb "github.com/mailgun/groupcache/v2/groupcachepb"
+	"github.com/mailgun/groupcache/v2/lru"
+	"github.com/mailgun/groupcache/v2/singleflight"
 )
 
 // A Getter loads data for a key.
