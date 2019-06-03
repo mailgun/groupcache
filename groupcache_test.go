@@ -19,10 +19,10 @@ limitations under the License.
 package groupcache
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"math/rand"
 	"reflect"
 	"sync"
 	"testing"
@@ -32,7 +32,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	pb "github.com/mailgun/groupcache/groupcachepb"
-	testpb "github.com/mailgun/groupcache/testpb"
+	"github.com/mailgun/groupcache/testpb"
 )
 
 var (
@@ -41,7 +41,7 @@ var (
 
 	stringc = make(chan string)
 
-	dummyCtx Context
+	dummyCtx context.Context
 
 	// cacheFills is the number of times stringGroup or
 	// protoGroup's Getter have been called. Read using the
@@ -59,7 +59,7 @@ const (
 )
 
 func testSetup() {
-	stringGroup = NewGroup(stringGroupName, cacheSize, GetterFunc(func(_ Context, key string, dest Sink) error {
+	stringGroup = NewGroup(stringGroupName, cacheSize, GetterFunc(func(_ context.Context, key string, dest Sink) error {
 		if key == fromChan {
 			key = <-stringc
 		}
@@ -67,7 +67,7 @@ func testSetup() {
 		return dest.SetString("ECHO:"+key, time.Time{})
 	}))
 
-	protoGroup = NewGroup(protoGroupName, cacheSize, GetterFunc(func(_ Context, key string, dest Sink) error {
+	protoGroup = NewGroup(protoGroupName, cacheSize, GetterFunc(func(_ context.Context, key string, dest Sink) error {
 		if key == fromChan {
 			key = <-stringc
 		}
@@ -78,7 +78,7 @@ func testSetup() {
 		}, time.Time{})
 	}))
 
-	expireGroup = NewGroup(expireGroupName, cacheSize, GetterFunc(func(_ Context, key string, dest Sink) error {
+	expireGroup = NewGroup(expireGroupName, cacheSize, GetterFunc(func(_ context.Context, key string, dest Sink) error {
 		cacheFills.Add(1)
 		return dest.SetString("ECHO:"+key, time.Now().Add(time.Millisecond*100))
 	}))
@@ -254,7 +254,7 @@ type fakePeer struct {
 	fail bool
 }
 
-func (p *fakePeer) Get(_ Context, in *pb.GetRequest, out *pb.GetResponse) error {
+func (p *fakePeer) Get(_ context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	p.hits++
 	if p.fail {
 		return errors.New("simulated error from peer")
@@ -263,7 +263,7 @@ func (p *fakePeer) Get(_ Context, in *pb.GetRequest, out *pb.GetResponse) error 
 	return nil
 }
 
-func (p *fakePeer) Remove(_ Context, in *pb.GetRequest) error {
+func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
 	p.hits++
 	if p.fail {
 		return errors.New("simulated error from peer")
@@ -288,14 +288,13 @@ func (p fakePeers) GetAll() []ProtoGetter {
 // tests that peers (virtual, in-process) are hit, and how much.
 func TestPeers(t *testing.T) {
 	once.Do(testSetup)
-	rand.Seed(123)
 	peer0 := &fakePeer{}
 	peer1 := &fakePeer{}
 	peer2 := &fakePeer{}
 	peerList := fakePeers([]ProtoGetter{peer0, peer1, peer2, nil})
 	const cacheSize = 0 // disabled
 	localHits := 0
-	getter := func(_ Context, key string, dest Sink) error {
+	getter := func(_ context.Context, key string, dest Sink) error {
 		localHits++
 		return dest.SetString("got:"+key, time.Time{})
 	}
@@ -338,9 +337,9 @@ func TestPeers(t *testing.T) {
 	resetCacheSize(1 << 20)
 	run("base", 200, "localHits = 49, peers = 51 49 51")
 
-	// Verify cache was hit.  All localHits are gone, and some of
-	// the peer hits (the ones randomly selected to be maybe hot)
-	run("cached_base", 200, "localHits = 0, peers = 49 47 48")
+	// Verify cache was hit.  All localHits and peers are gone as the hotCache has
+	// the data we need
+	run("cached_base", 200, "localHits = 0, peers = 0 0 0")
 	resetCacheSize(0)
 
 	// With one of the peers being down.
@@ -427,7 +426,7 @@ func (g *orderedFlightGroup) Lock(fn func()) {
 func TestNoDedup(t *testing.T) {
 	const testkey = "testkey"
 	const testval = "testval"
-	g := newGroup("testgroup", 1024, GetterFunc(func(_ Context, key string, dest Sink) error {
+	g := newGroup("testgroup", 1024, GetterFunc(func(_ context.Context, key string, dest Sink) error {
 		return dest.SetString(testval, time.Time{})
 	}), nil)
 

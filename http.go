@@ -18,6 +18,7 @@ package groupcache
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -37,16 +38,6 @@ const defaultReplicas = 50
 
 // HTTPPool implements PeerPicker for a pool of HTTP peers.
 type HTTPPool struct {
-	// Context optionally specifies a context for the server to use when it
-	// receives a request.
-	// If nil, the server uses a nil Context.
-	Context func(*http.Request) Context
-
-	// Transport optionally specifies an http.RoundTripper for the client
-	// to use when it makes a request.
-	// If nil, the client uses http.DefaultTransport.
-	Transport func(Context) http.RoundTripper
-
 	// this peer's base URL, e.g. "https://example.net:8000"
 	self string
 
@@ -71,6 +62,16 @@ type HTTPPoolOptions struct {
 	// HashFn specifies the hash function of the consistent hash.
 	// If blank, it defaults to crc32.ChecksumIEEE.
 	HashFn consistenthash.Hash
+
+	// Transport optionally specifies an http.RoundTripper for the client
+	// to use when it makes a request.
+	// If nil, the client uses http.DefaultTransport.
+	Transport func(context.Context) http.RoundTripper
+
+	// Context optionally specifies a context for the server to use when it
+	// receives a request.
+	// If nil, uses the http.Request.Context()
+	Context func(*http.Request) context.Context
 }
 
 // NewHTTPPool initializes an HTTP pool of peers, and registers itself as a PeerPicker.
@@ -123,7 +124,7 @@ func (p *HTTPPool) Set(peers ...string) {
 	p.peers.Add(peers...)
 	p.httpGetters = make(map[string]*httpGetter, len(peers))
 	for _, peer := range peers {
-		p.httpGetters[peer] = &httpGetter{transport: p.Transport, baseURL: peer + p.opts.BasePath}
+		p.httpGetters[peer] = &httpGetter{getTransport: p.opts.Transport, baseURL: peer + p.opts.BasePath}
 	}
 }
 
@@ -172,9 +173,11 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 		return
 	}
-	var ctx Context
-	if p.Context != nil {
-		ctx = p.Context(r)
+	var ctx context.Context
+	if p.opts.Context != nil {
+		ctx = p.opts.Context(r)
+	} else {
+		ctx = r.Context()
 	}
 
 	group.Stats.ServerRequests.Add(1)
@@ -215,15 +218,16 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type httpGetter struct {
-	transport func(Context) http.RoundTripper
-	baseURL   string
+	getTransport func(context.Context) http.RoundTripper
+	transport    http.RoundTripper
+	baseURL      string
 }
 
 var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetRequest, out *http.Response) error {
+func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetRequest, out *http.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
@@ -234,11 +238,22 @@ func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetReque
 	if err != nil {
 		return err
 	}
-	tr := http.DefaultTransport
-	if h.transport != nil {
-		tr = h.transport(context)
+
+	// Pass along the context to the RoundTripper
+	req = req.WithContext(ctx)
+
+	// Associate the transport with this peer so we take advantage of connection reuse.
+	if h.transport == nil {
+		if h.getTransport != nil {
+			h.transport = h.getTransport(ctx)
+		}
+		// Ensure we have a copy of the default transport and not just a reference.
+		tr := http.DefaultTransport.(*http.Transport)
+		trCopy := http.Transport(*tr)
+		h.transport = &trCopy
 	}
-	res, err := tr.RoundTrip(req)
+
+	res, err := h.transport.RoundTrip(req)
 	if err != nil {
 		return err
 	}
@@ -246,7 +261,7 @@ func (h *httpGetter) makeRequest(context Context, method string, in *pb.GetReque
 	return nil
 }
 
-func (h *httpGetter) Get(ctx Context, in *pb.GetRequest, out *pb.GetResponse) error {
+func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodGet, in, &res); err != nil {
 		return err
@@ -269,7 +284,7 @@ func (h *httpGetter) Get(ctx Context, in *pb.GetRequest, out *pb.GetResponse) er
 	return nil
 }
 
-func (h *httpGetter) Remove(ctx Context, in *pb.GetRequest) error {
+func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {
 		return err
