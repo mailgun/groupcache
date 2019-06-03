@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2019-05-30
+## [2.0.0-rc.2] - 2019-06-03
 ### Changes
 * Now using golang standard `context.Context` instead of `groupcache.Context`.
 * HTTP requests made by `httpGetter` now respect `context.Context` done.
@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Now always populating the hotcache. A more complex algorithm is unnecessary
   when the LRU cache will ensure the most used values remain in the cache. The
   evict code ensures the hotcache does not overcrowd the maincache.
+* Changed import paths to /v2 in accordance with go modules rules
 
 ## [1.3.0] - 2019-05-23
 ### Added
