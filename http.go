@@ -222,7 +222,6 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type httpGetter struct {
 	getTransport func(context.Context) http.RoundTripper
-	transport    http.RoundTripper
 	baseURL      string
 }
 
@@ -245,17 +244,12 @@ func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetR
 	// Pass along the context to the RoundTripper
 	req = req.WithContext(ctx)
 
-	// Associate the transport with this peer so we don't need to
-	// call getTransport() every time a request is made.
-	if h.transport == nil {
-		if h.getTransport != nil {
-			h.transport = h.getTransport(ctx)
-		} else {
-			h.transport = http.DefaultTransport
-		}
+	tr := http.DefaultTransport
+	if h.getTransport != nil {
+		tr = h.getTransport(ctx)
 	}
 
-	res, err := h.transport.RoundTrip(req)
+	res, err := tr.RoundTrip(req)
 	if err != nil {
 		return err
 	}
