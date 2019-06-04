@@ -124,7 +124,10 @@ func (p *HTTPPool) Set(peers ...string) {
 	p.peers.Add(peers...)
 	p.httpGetters = make(map[string]*httpGetter, len(peers))
 	for _, peer := range peers {
-		p.httpGetters[peer] = &httpGetter{getTransport: p.opts.Transport, baseURL: peer + p.opts.BasePath}
+		p.httpGetters[peer] = &httpGetter{
+			getTransport: p.opts.Transport,
+			baseURL:      peer + p.opts.BasePath,
+		}
 	}
 }
 
@@ -242,15 +245,14 @@ func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetR
 	// Pass along the context to the RoundTripper
 	req = req.WithContext(ctx)
 
-	// Associate the transport with this peer so we take advantage of connection reuse.
+	// Associate the transport with this peer so we don't need to
+	// call getTransport() every time a request is made.
 	if h.transport == nil {
 		if h.getTransport != nil {
 			h.transport = h.getTransport(ctx)
+		} else {
+			h.transport = http.DefaultTransport
 		}
-		// Ensure we have a copy of the default transport and not just a reference.
-		tr := http.DefaultTransport.(*http.Transport)
-		trCopy := http.Transport(*tr)
-		h.transport = &trCopy
 	}
 
 	res, err := h.transport.RoundTrip(req)
