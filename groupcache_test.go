@@ -491,5 +491,35 @@ func TestGroupStatsAlignment(t *testing.T) {
 	}
 }
 
-// TODO(bradfitz): port the Google-internal full integration test into here,
-// using HTTP requests instead of our RPC system.
+type slowPeer struct {
+	fakePeer
+}
+
+func (p *slowPeer) Get(_ context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
+	time.Sleep(time.Second)
+	out.Value = []byte("got:" + in.GetKey())
+	return nil
+}
+
+func TestContextDeadlineOnPeer(t *testing.T) {
+	once.Do(testSetup)
+	peer0 := &slowPeer{}
+	peer1 := &slowPeer{}
+	peer2 := &slowPeer{}
+	peerList := fakePeers([]ProtoGetter{peer0, peer1, peer2, nil})
+	getter := func(_ context.Context, key string, dest Sink) error {
+		return dest.SetString("got:"+key, time.Time{})
+	}
+	testGroup := newGroup("TestContextDeadlineOnPeer-group", cacheSize, GetterFunc(getter), peerList)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel()
+
+	var got string
+	err := testGroup.Get(ctx, "test-key", StringSink(&got))
+	if err != nil {
+		if err != context.DeadlineExceeded {
+			t.Errorf("expected Get to return context deadline exceeded")
+		}
+	}
+}

@@ -326,6 +326,11 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 				return value, nil
 			}
 			g.Stats.PeerErrors.Add(1)
+			if ctx != nil && ctx.Err() != nil {
+				// Return here without attempting to get locally
+				// since the context is no longer valid
+				return nil, err
+			}
 			// TODO(bradfitz): log the peer's error? keep
 			// log of the past few for /groupcachez?  It's
 			// probably boring (normal task movement), so not
