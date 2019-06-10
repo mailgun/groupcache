@@ -1,5 +1,10 @@
 # groupcache
 
+A modified version of [group cache](https://github.com/golang/groupcache) with
+support for `context.Context`, [go modules](https://github.com/golang/go/wiki/Modules),
+and explicit key removal and expiration. See the `CHANGELOG` for a complete list of 
+modifications.
+
 ## Summary
 
 groupcache is a caching and cache-filling library, intended as a
@@ -7,7 +12,33 @@ replacement for memcached in many cases.
 
 For API docs and examples, see http://godoc.org/github.com/mailgun/groupcache
 
-## Comparison to memcached
+   
+### Modifications from original library
+
+* Support for explicit key removal from a group. `Remove()` requests are 
+  first sent to the peer who owns the key, then the remove request is 
+  forwarded to every peer in the groupcache. NOTE: This is a best case design
+  since it is possible a temporary network disruption could occur resulting
+  in remove requests never making it their peers. In practice this scenario
+  is very rare and the system remains very consistent. In case of an
+  inconsistency placing a expiration time on your values will ensure the 
+  cluster eventually becomes consistent again.
+
+* Support for expired values. `SetBytes()`, `SetProto()` and `SetString()` now
+  accept an optional `time.Time{}` which represents a time in the future when the
+  value will expire. Expiration is handled by the LRU Cache when a `Get()` on a 
+  key is requested. This means no network coordination of expired values is needed.
+  However this does require that time on all nodes in the cluster is synchronized 
+  for consistent expiration of values.
+
+* Network methods now accept golang standard `context.Context` instead of
+  `groupcache.Context`.
+
+* Now always populating the hotcache. A more complex algorithm is unnecessary
+  when the LRU cache will ensure the most used values remain in the cache. The
+  evict code ensures the hotcache never overcrowds the maincache.
+
+## Comparing Groupcache to memcached
 
 ### **Like memcached**, groupcache:
 
@@ -28,16 +59,7 @@ For API docs and examples, see http://godoc.org/github.com/mailgun/groupcache
    the loaded value to all callers.
 
  * does not support versioned values.  If key "foo" is value "bar",
-   key "foo" must always be "bar".  There are neither cache expiration
-   times, nor explicit cache evictions.  Thus there is also no CAS,
-   nor Increment/Decrement.  This also means that groupcache....
-
- * ... supports automatic mirroring of super-hot items to multiple
-   processes.  This prevents memcached hot spotting where a machine's
-   CPU and/or NIC are overloaded by very popular keys/values.
-
- * is currently only available for Go.  It's very unlikely that I
-   (bradfitz@) will port the code to any other language.
+   key "foo" must always be "bar".
 
 ## Loading process
 
@@ -58,16 +80,76 @@ In a nutshell, a groupcache lookup of **Get("foo")** looks like:
     the answer.  If the RPC fails, just load it locally (still with
     local dup suppression).
 
-## Users
+## Example
 
-groupcache is in production use by dl.google.com (its original user),
-parts of Blogger, parts of Google Code, parts of Google Fiber, parts
-of Google production monitoring systems, etc.
+```go
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
 
-## Presentations
+	"github.com/mailgun/groupcache/v2"
+)
 
-See http://talks.golang.org/2013/oscon-dl.slide
+func ExampleUsage() {
+	// Keep track of peers in our cluster and add our instance to the pool `http://localhost:8080`
+	pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{})
 
-## Help
+	// Add more peers to the cluster
+	//pool.Set("http://peer1:8080", "http://peer2:8080")
 
-Use the golang-nuts mailing list for any discussion or questions.
+	server := http.Server{
+        Addr:    "localhost:8080",
+        Handler: pool,
+    }
+
+    // Start a HTTP server to listen for peer requests from the groupcache
+    go func() {
+        log.Printf("Serving....\n")
+        if err := server.ListenAndServe(); err != nil {
+            log.Fatal(err)
+        }
+    }()
+    defer server.Shutdown(context.Background())
+
+	// Create a new group cache with a max cache size of 3MB
+	group := groupcache.NewGroup("users", 3000000, groupcache.GetterFunc(
+		func(ctx context.Context, id string, dest groupcache.Sink) error {
+
+			// Returns a protobuf struct `User`
+			if user, err := fetchUserFromMongo(ctx, id); err != nil {
+				return err
+			}
+
+			// Set the user in the groupcache to expire after 5 minutes
+			if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
+				return err
+			}
+			return nil
+		},
+	))
+
+	var user User
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+
+	if err := group.Get(ctx, "12345", groupcache.ProtoSink(&user)); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("-- User --\n")
+	fmt.Printf("Id: %s\n", user.Id)
+	fmt.Printf("Name: %s\n", user.Name)
+	fmt.Printf("Age: %d\n", user.Age)
+	fmt.Printf("IsSuper: %t\n", user.IsSuper)
+
+	// Remove the key from the groupcache
+	if err := group.Remove(ctx, "12345"); err != nil {
+		log.Fatal(err)
+	}
+}
+
+```
+
