@@ -97,7 +97,7 @@ func ExampleUsage() {
 	pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{})
 
 	// Add more peers to the cluster
-	//pool.Set("http://peer1:8080", "http://peer2:8080")
+	pool.Set("http://peer1:8080", "http://peer2:8080")
 
 	server := http.Server{
         Addr:    "localhost:8080",
