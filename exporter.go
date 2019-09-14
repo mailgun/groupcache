@@ -1,4 +1,4 @@
-package gpexporter
+package gcexporter
 
 import (
 	"github.com/golang/groupcache"

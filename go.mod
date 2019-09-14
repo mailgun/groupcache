@@ -1,4 +1,4 @@
-module github.com/oleh-ozimok/groupcache-exporter
+module github.com/oleh-ozimok/gcexporter
 
 go 1.12
 
