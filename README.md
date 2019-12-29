@@ -87,31 +87,32 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/mailgun/groupcache/v2"
 )
 
 func ExampleUsage() {
-    // Keep track of peers in our cluster and add our instance to the pool `http://localhost:8080`
-    pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{})
+	// Keep track of peers in our cluster and add our instance to the pool `http://localhost:8080`
+	pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{})
 
-    // Add more peers to the cluster
-    pool.Set("http://peer1:8080", "http://peer2:8080")
+	// Add more peers to the cluster
+	pool.Set("http://peer1:8080", "http://peer2:8080")
 
-    server := http.Server{
-        Addr:    "localhost:8080",
-        Handler: pool,
-    }
+	server := http.Server{
+		Addr:    "localhost:8080",
+		Handler: pool,
+	}
 
-    // Start a HTTP server to listen for peer requests from the groupcache
-    go func() {
-        log.Printf("Serving....\n")
-        if err := server.ListenAndServe(); err != nil {
-            log.Fatal(err)
-        }
-    }()
-    defer server.Shutdown(context.Background())
+	// Start a HTTP server to listen for peer requests from the groupcache
+	go func() {
+		log.Printf("Serving....\n")
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+	defer server.Shutdown(context.Background())
 
 	// Create a new group cache with a max cache size of 3MB
 	group := groupcache.NewGroup("users", 3000000, groupcache.GetterFunc(
@@ -150,6 +151,7 @@ func ExampleUsage() {
 		log.Fatal(err)
 	}
 }
+
 
 ```
 
