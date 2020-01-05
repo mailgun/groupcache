@@ -31,9 +31,6 @@ For API docs and examples, see http://godoc.org/github.com/mailgun/groupcache
   However this does require that time on all nodes in the cluster is synchronized 
   for consistent expiration of values.
 
-* Network methods now accept golang standard `context.Context` instead of
-  `groupcache.Context`.
-
 * Now always populating the hotcache. A more complex algorithm is unnecessary
   when the LRU cache will ensure the most used values remain in the cache. The
   evict code ensures the hotcache never overcrowds the maincache.
@@ -84,12 +81,12 @@ In a nutshell, a groupcache lookup of **Get("foo")** looks like:
 
 ```go
 import (
-	"context"
-	"fmt"
-	"log"
-	"time"
+    "context"
+    "fmt"
+    "log"
+    "time"
 
-	"github.com/mailgun/groupcache/v2"
+    "github.com/mailgun/groupcache/v2"
 )
 
 func ExampleUsage() {
@@ -113,42 +110,42 @@ func ExampleUsage() {
     }()
     defer server.Shutdown(context.Background())
 
-	// Create a new group cache with a max cache size of 3MB
-	group := groupcache.NewGroup("users", 3000000, groupcache.GetterFunc(
-		func(ctx context.Context, id string, dest groupcache.Sink) error {
+    // Create a new group cache with a max cache size of 3MB
+    group := groupcache.NewGroup("users", 3000000, groupcache.GetterFunc(
+        func(ctx context.Context, id string, dest groupcache.Sink) error {
 
-			// Returns a protobuf struct `User`
-			if user, err := fetchUserFromMongo(ctx, id); err != nil {
-				return err
-			}
+            // Returns a protobuf struct `User`
+            if user, err := fetchUserFromMongo(ctx, id); err != nil {
+                return err
+            }
 
-			// Set the user in the groupcache to expire after 5 minutes
-			if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
-				return err
-			}
-			return nil
-		},
-	))
+            // Set the user in the groupcache to expire after 5 minutes
+            if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
+                return err
+            }
+            return nil
+        },
+    ))
 
-	var user User
+    var user User
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+    defer cancel()
 
-	if err := group.Get(ctx, "12345", groupcache.ProtoSink(&user)); err != nil {
-		log.Fatal(err)
-	}
+    if err := group.Get(ctx, "12345", groupcache.ProtoSink(&user)); err != nil {
+        log.Fatal(err)
+    }
 
-	fmt.Printf("-- User --\n")
-	fmt.Printf("Id: %s\n", user.Id)
-	fmt.Printf("Name: %s\n", user.Name)
-	fmt.Printf("Age: %d\n", user.Age)
-	fmt.Printf("IsSuper: %t\n", user.IsSuper)
+    fmt.Printf("-- User --\n")
+    fmt.Printf("Id: %s\n", user.Id)
+    fmt.Printf("Name: %s\n", user.Name)
+    fmt.Printf("Age: %d\n", user.Age)
+    fmt.Printf("IsSuper: %t\n", user.IsSuper)
 
-	// Remove the key from the groupcache
-	if err := group.Remove(ctx, "12345"); err != nil {
-		log.Fatal(err)
-	}
+    // Remove the key from the groupcache
+    if err := group.Remove(ctx, "12345"); err != nil {
+        log.Fatal(err)
+    }
 }
 
 ```
