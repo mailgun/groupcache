@@ -265,7 +265,7 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 			}
 
 			wg.Add(1)
-			go func(peer string) {
+			go func(peer ProtoGetter) {
 				errs <- g.removeFromPeer(ctx, peer, key)
 				wg.Done()
 			}(peer)
