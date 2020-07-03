@@ -350,9 +350,10 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 
 			if logger != nil {
 				logger.WithFields(logrus.Fields{
-					"err": err,
-					"key": key,
-				}).Error("groupcache: error retrieving key from peers")
+					"err":      err,
+					"key":      key,
+					"category": "groupcache",
+				}).Error("error retrieving key from peers")
 			}
 
 			g.Stats.PeerErrors.Add(1)
