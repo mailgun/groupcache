@@ -195,16 +195,16 @@ type flightGroup interface {
 
 // Stats are per-group statistics.
 type Stats struct {
-	Gets                        AtomicInt // any Get request, including from peers
-	CacheHits                   AtomicInt // either cache was good
-	GetFromPeersSlowestDuration AtomicInt // slowest duration to request value from peers
-	PeerLoads                   AtomicInt // either remote load or remote cache hit (not an error)
-	PeerErrors                  AtomicInt
-	Loads                       AtomicInt // (gets - cacheHits)
-	LoadsDeduped                AtomicInt // after singleflight
-	LocalLoads                  AtomicInt // total good local loads
-	LocalLoadErrs               AtomicInt // total bad local loads
-	ServerRequests              AtomicInt // gets that came over the network from peers
+	Gets                     AtomicInt // any Get request, including from peers
+	CacheHits                AtomicInt // either cache was good
+	GetFromPeersLatencyLower AtomicInt // slowest duration to request value from peers
+	PeerLoads                AtomicInt // either remote load or remote cache hit (not an error)
+	PeerErrors               AtomicInt
+	Loads                    AtomicInt // (gets - cacheHits)
+	LoadsDeduped             AtomicInt // after singleflight
+	LocalLoads               AtomicInt // total good local loads
+	LocalLoadErrs            AtomicInt // total bad local loads
+	ServerRequests           AtomicInt // gets that came over the network from peers
 }
 
 // Name returns the name of the group.
@@ -339,8 +339,8 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			duration := int64(time.Since(start)) / int64(time.Millisecond)
 
 			// metrics only store the slowest duration
-			if g.Stats.GetFromPeersSlowestDuration.Get() < duration {
-				g.Stats.GetFromPeersSlowestDuration.Store(duration)
+			if g.Stats.GetFromPeersLatencyLower.Get() < duration {
+				g.Stats.GetFromPeersLatencyLower.Store(duration)
 			}
 
 			if err == nil {
