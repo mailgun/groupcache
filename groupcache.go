@@ -336,7 +336,7 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			value, err = g.getFromPeer(ctx, peer, key)
 
 			// metrics duration compute
-			duration := time.Since(start).Milliseconds()
+			duration := int64(time.Since(start)) / int64(time.Millisecond)
 
 			// metrics only store the slowest duration
 			if g.Stats.GetFromPeersSlowestDuration.Get() < duration {
