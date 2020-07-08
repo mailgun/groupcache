@@ -157,20 +157,6 @@ func (p *HTTPPool) PickPeer(key string) (ProtoGetter, bool) {
 	return nil, false
 }
 
-// GetURL
-func (p *HTTPPool) GetURL(key string) string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.peers.IsEmpty() {
-		return ""
-	}
-	if peer := p.peers.Get(key); peer != p.self {
-		return peer
-	}
-	return p.self
-}
-
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Parse request.
 	if !strings.HasPrefix(r.URL.Path, p.opts.BasePath) {
@@ -237,6 +223,11 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type httpGetter struct {
 	getTransport func(context.Context) http.RoundTripper
 	baseURL      string
+}
+
+// GetURL
+func (p *httpGetter) GetURL() string {
+	return p.baseURL
 }
 
 var bufferPool = sync.Pool{

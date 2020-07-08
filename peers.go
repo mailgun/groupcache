@@ -28,6 +28,8 @@ import (
 type ProtoGetter interface {
 	Get(context context.Context, in *pb.GetRequest, out *pb.GetResponse) error
 	Remove(context context.Context, in *pb.GetRequest) error
+	// GetURL returns the peer URL
+	GetURL() string
 }
 
 // PeerPicker is the interface that must be implemented to locate
@@ -39,9 +41,6 @@ type PeerPicker interface {
 	PickPeer(key string) (peer ProtoGetter, ok bool)
 	// GetAll returns all the peers in the group
 	GetAll() []ProtoGetter
-	// GetURL returns the peer URL that own the specific key
-	// It returns empty string if there is no peers
-	GetURL(key string) string
 }
 
 // NoPeers is an implementation of PeerPicker that never finds a peer.
@@ -49,7 +48,6 @@ type NoPeers struct{}
 
 func (NoPeers) PickPeer(key string) (peer ProtoGetter, ok bool) { return }
 func (NoPeers) GetAll() []ProtoGetter                           { return []ProtoGetter{} }
-func (NoPeers) GetURL(key string) string                        { return "" }
 
 var (
 	portPicker func(groupName string) PeerPicker
