@@ -353,7 +353,7 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 					"err":      err,
 					"key":      key,
 					"category": "groupcache",
-				}).Error("error retrieving key from peers")
+				}).Errorf("error retrieving key from peer '%s'", g.peers.GetURL(key))
 			}
 
 			g.Stats.PeerErrors.Add(1)

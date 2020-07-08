@@ -285,6 +285,10 @@ func (p fakePeers) GetAll() []ProtoGetter {
 	return p
 }
 
+func (p fakePeers) GetURL(key string) string {
+	return "fakePeer"
+}
+
 // tests that peers (virtual, in-process) are hit, and how much.
 func TestPeers(t *testing.T) {
 	once.Do(testSetup)

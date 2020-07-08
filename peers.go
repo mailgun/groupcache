@@ -20,6 +20,7 @@ package groupcache
 
 import (
 	"context"
+
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 )
 
@@ -36,7 +37,11 @@ type PeerPicker interface {
 	// and true to indicate that a remote peer was nominated.
 	// It returns nil, false if the key owner is the current peer.
 	PickPeer(key string) (peer ProtoGetter, ok bool)
+	// GetAll returns all the peers in the group
 	GetAll() []ProtoGetter
+	// GetURL returns the peer URL that own the specific key
+	// It returns empty string if there is no peers
+	GetURL(key string) string
 }
 
 // NoPeers is an implementation of PeerPicker that never finds a peer.
@@ -44,6 +49,7 @@ type NoPeers struct{}
 
 func (NoPeers) PickPeer(key string) (peer ProtoGetter, ok bool) { return }
 func (NoPeers) GetAll() []ProtoGetter                           { return []ProtoGetter{} }
+func (NoPeers) GetURL(key string) string                        { return "" }
 
 var (
 	portPicker func(groupName string) PeerPicker
