@@ -85,6 +85,13 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	return newGroup(name, cacheBytes, getter, nil)
 }
 
+// DeregisterGroup removes group from group pool
+func DeregisterGroup(name string) {
+	mu.Lock()
+	delete(groups, name)
+	mu.Unlock()
+}
+
 // If peers is nil, the peerPicker is called via a sync.Once to initialize it.
 func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
 	if getter == nil {
