@@ -35,7 +35,14 @@ import (
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 	"github.com/mailgun/groupcache/v2/lru"
 	"github.com/mailgun/groupcache/v2/singleflight"
+	"github.com/sirupsen/logrus"
 )
+
+var logger *logrus.Entry
+
+func SetLogger(log *logrus.Entry) {
+	logger = log
+}
 
 // A Getter loads data for a key.
 type Getter interface {
@@ -195,15 +202,16 @@ type flightGroup interface {
 
 // Stats are per-group statistics.
 type Stats struct {
-	Gets           AtomicInt // any Get request, including from peers
-	CacheHits      AtomicInt // either cache was good
-	PeerLoads      AtomicInt // either remote load or remote cache hit (not an error)
-	PeerErrors     AtomicInt
-	Loads          AtomicInt // (gets - cacheHits)
-	LoadsDeduped   AtomicInt // after singleflight
-	LocalLoads     AtomicInt // total good local loads
-	LocalLoadErrs  AtomicInt // total bad local loads
-	ServerRequests AtomicInt // gets that came over the network from peers
+	Gets                     AtomicInt // any Get request, including from peers
+	CacheHits                AtomicInt // either cache was good
+	GetFromPeersLatencyLower AtomicInt // slowest duration to request value from peers
+	PeerLoads                AtomicInt // either remote load or remote cache hit (not an error)
+	PeerErrors               AtomicInt
+	Loads                    AtomicInt // (gets - cacheHits)
+	LoadsDeduped             AtomicInt // after singleflight
+	LocalLoads               AtomicInt // total good local loads
+	LocalLoadErrs            AtomicInt // total bad local loads
+	ServerRequests           AtomicInt // gets that came over the network from peers
 }
 
 // Name returns the name of the group.
@@ -327,11 +335,34 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 		var value ByteView
 		var err error
 		if peer, ok := g.peers.PickPeer(key); ok {
+
+			// metrics duration start
+			start := time.Now()
+
+			// get value from peers
 			value, err = g.getFromPeer(ctx, peer, key)
+
+			// metrics duration compute
+			duration := int64(time.Since(start)) / int64(time.Millisecond)
+
+			// metrics only store the slowest duration
+			if g.Stats.GetFromPeersLatencyLower.Get() < duration {
+				g.Stats.GetFromPeersLatencyLower.Store(duration)
+			}
+
 			if err == nil {
 				g.Stats.PeerLoads.Add(1)
 				return value, nil
 			}
+
+			if logger != nil {
+				logger.WithFields(logrus.Fields{
+					"err":      err,
+					"key":      key,
+					"category": "groupcache",
+				}).Errorf("error retrieving key from peer '%s'", peer.GetURL())
+			}
+
 			g.Stats.PeerErrors.Add(1)
 			if ctx != nil && ctx.Err() != nil {
 				// Return here without attempting to get locally
@@ -343,6 +374,7 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			// probably boring (normal task movement), so not
 			// worth logging I imagine.
 		}
+
 		value, err = g.getLocally(ctx, key, dest)
 		if err != nil {
 			g.Stats.LocalLoadErrs.Add(1)
@@ -573,6 +605,11 @@ type AtomicInt int64
 // Add atomically adds n to i.
 func (i *AtomicInt) Add(n int64) {
 	atomic.AddInt64((*int64)(i), n)
+}
+
+// Store atomically stores n to i.
+func (i *AtomicInt) Store(n int64) {
+	atomic.StoreInt64((*int64)(i), n)
 }
 
 // Get atomically gets the value of i.

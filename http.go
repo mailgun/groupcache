@@ -225,6 +225,11 @@ type httpGetter struct {
 	baseURL      string
 }
 
+// GetURL
+func (p *httpGetter) GetURL() string {
+	return p.baseURL
+}
+
 var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }

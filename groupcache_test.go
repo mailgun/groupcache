@@ -271,6 +271,10 @@ func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
 	return nil
 }
 
+func (p *fakePeer) GetURL() string {
+	return "fakePeer"
+}
+
 type fakePeers []ProtoGetter
 
 func (p fakePeers) PickPeer(key string) (peer ProtoGetter, ok bool) {

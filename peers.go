@@ -20,6 +20,7 @@ package groupcache
 
 import (
 	"context"
+
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 )
 
@@ -27,6 +28,8 @@ import (
 type ProtoGetter interface {
 	Get(context context.Context, in *pb.GetRequest, out *pb.GetResponse) error
 	Remove(context context.Context, in *pb.GetRequest) error
+	// GetURL returns the peer URL
+	GetURL() string
 }
 
 // PeerPicker is the interface that must be implemented to locate
@@ -36,6 +39,7 @@ type PeerPicker interface {
 	// and true to indicate that a remote peer was nominated.
 	// It returns nil, false if the key owner is the current peer.
 	PickPeer(key string) (peer ProtoGetter, ok bool)
+	// GetAll returns all the peers in the group
 	GetAll() []ProtoGetter
 }
 
