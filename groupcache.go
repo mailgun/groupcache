@@ -55,11 +55,28 @@ type Getter interface {
 	Get(ctx context.Context, key string, dest Sink) error
 }
 
+type Setter interface {
+	// Get returns the value identified by key, populating dest.
+	//
+	// The returned data must be unversioned. That is, key must
+	// uniquely describe the loaded data, without an implicit
+	// current time, and without relying on cache expiration
+	// mechanisms.
+	Set(ctx context.Context, key string, dest Sink, value ByteView) error
+}
+
 // A GetterFunc implements Getter with a function.
 type GetterFunc func(ctx context.Context, key string, dest Sink) error
 
 func (f GetterFunc) Get(ctx context.Context, key string, dest Sink) error {
 	return f(ctx, key, dest)
+}
+
+// A SetterFunc implements Setter with a function.
+type SetterFunc func(ctx context.Context, key string, dest Sink, value ByteView) error
+
+func (f SetterFunc) Set(ctx context.Context, key string, dest Sink, value ByteView) error {
+	return f(ctx, key, dest, value)
 }
 
 var (
@@ -89,7 +106,14 @@ func GetGroup(name string) *Group {
 //
 // The group name must be unique for each getter.
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
+	if getter == nil {
+		panic("nil Getter")
+	}
 	return newGroup(name, cacheBytes, getter, nil)
+}
+
+func NewControlledGroup(name string, cacheBytes int64, setter Setter) *Group {
+	return newControlledGroup(name, cacheBytes, setter, nil)
 }
 
 // DeregisterGroup removes group from group pool
@@ -101,9 +125,6 @@ func DeregisterGroup(name string) {
 
 // If peers is nil, the peerPicker is called via a sync.Once to initialize it.
 func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
-	if getter == nil {
-		panic("nil Getter")
-	}
 	mu.Lock()
 	defer mu.Unlock()
 	initPeerServerOnce.Do(callInitPeerServer)
@@ -113,6 +134,29 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 	g := &Group{
 		name:        name,
 		getter:      getter,
+		peers:       peers,
+		cacheBytes:  cacheBytes,
+		loadGroup:   &singleflight.Group{},
+		removeGroup: &singleflight.Group{},
+	}
+	if fn := newGroupHook; fn != nil {
+		fn(g)
+	}
+	groups[name] = g
+	return g
+}
+
+// If peers is nil, the peerPicker is called via a sync.Once to initialize it.
+func newControlledGroup(name string, cacheBytes int64, setter Setter, peers PeerPicker) *Group {
+	mu.Lock()
+	defer mu.Unlock()
+	initPeerServerOnce.Do(callInitPeerServer)
+	if _, dup := groups[name]; dup {
+		panic("duplicate registration of group " + name)
+	}
+	g := &Group{
+		name:        name,
+		setter:      setter,
 		peers:       peers,
 		cacheBytes:  cacheBytes,
 		loadGroup:   &singleflight.Group{},
@@ -157,6 +201,7 @@ func callInitPeerServer() {
 type Group struct {
 	name       string
 	getter     Getter
+	setter     Setter
 	peersOnce  sync.Once
 	peers      PeerPicker
 	cacheBytes int64 // limit for sum of mainCache and hotCache size
@@ -253,6 +298,35 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
+func (g *Group) Set(ctx context.Context, key string, dest Sink, v ByteView) error {
+	g.peersOnce.Do(g.initPeers)
+	g.Stats.Gets.Add(1)
+	if dest == nil {
+		return errors.New("groupcache: nil dest Sink")
+	}
+
+	// // TODO: Is cache hit still relevant for Set?
+	// value, cacheHit := g.lookupCache(key)
+	// if cacheHit {
+	// 	g.Stats.CacheHits.Add(1)
+	// 	return setSinkView(dest, value)
+	// }
+
+	// Optimization to avoid double unmarshalling or copying: keep
+	// track of whether the dest was already populated. One caller
+	// (if local) will set this; the losers will not. The common
+	// case will likely be one caller.
+	destPopulated := false
+	destPopulated, err := g.loadAndSet(ctx, key, dest, v)
+	if err != nil {
+		return err
+	}
+	if destPopulated {
+		return nil
+	}
+	return setSinkView(dest, v)
+}
+
 // Remove clears the key from our cache then forwards the remove
 // request to all peers.
 func (g *Group) Remove(ctx context.Context, key string) error {
@@ -300,6 +374,82 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 		return nil, err
 	})
 	return err
+}
+
+func (g *Group) loadAndSet(ctx context.Context, key string, dest Sink, value ByteView) (destPopulated bool, err error) {
+	// TODO: Add stats for set.
+	viewi, err := g.loadGroup.Do(key, func() (interface{}, error) {
+		// See dedup comments in load.
+		if value, cacheHit := g.lookupCache(key); cacheHit {
+			return value, nil
+		}
+		var err error
+		if peer, ok := g.peers.PickPeer(key); ok {
+
+			// metrics duration start
+			start := time.Now()
+
+			// get value from peers
+			err = g.setOnPeer(ctx, peer, key, value)
+			if err == nil {
+				return true, nil
+			}
+
+			if logger != nil {
+				logger.WithFields(logrus.Fields{
+					"err":      err,
+					"key":      key,
+					"category": "groupcache",
+				}).Errorf("error setting key from peer '%s'", peer.GetURL())
+			}
+
+			if ctx != nil && ctx.Err() != nil {
+				return nil, err
+			}
+		}
+
+		err = g.setLocally(ctx, key, dest, value)
+		if err != nil {
+			return true, err
+		}
+		destPopulated = true // only one caller of load gets this return value
+		g.populateCache(key, value, &g.mainCache)
+		return true, nil
+	})
+	if err == nil {
+		value = viewi.(ByteView)
+	}
+	return
+}
+
+func (g *Group) setLocally(ctx context.Context, key string, dest Sink, value ByteView) error {
+	err := g.setter.Set(ctx, key, dest, value)
+	return err
+}
+
+func (g *Group) setOnPeer(ctx context.Context, peer ProtoGetter, key string, value ByteView) error {
+	req := &pb.GetRequest{
+		Group:    &g.name,
+		Key:      &key,
+		SetValue: &value,
+	}
+	res := &pb.GetResponse{}
+	err := peer.Set(ctx, req, res, value)
+	if err != nil {
+		return err
+	}
+
+	var expire time.Time
+	if res.Expire != nil && *res.Expire != 0 {
+		expire = time.Unix(*res.Expire/int64(time.Second), *res.Expire%int64(time.Second))
+		if time.Now().After(expire) {
+			return errors.New("peer returned expired value")
+		}
+	}
+
+	// Always populate the hot cache
+	g.populateCache(key, value, &g.hotCache)
+	return nil
 }
 
 // load loads key either by invoking the getter locally or by sending it to another machine.

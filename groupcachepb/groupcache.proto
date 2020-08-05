@@ -21,6 +21,7 @@ package groupcachepb;
 message GetRequest {
   required string group = 1;
   required string key = 2; // not actually required/guaranteed to be UTF-8
+  optional bytes set_value = 3;
 }
 
 message GetResponse {
