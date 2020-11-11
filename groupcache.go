@@ -65,6 +65,7 @@ func (f GetterFunc) Get(ctx context.Context, key string, dest Sink) error {
 var (
 	mu     sync.RWMutex
 	groups = make(map[string]*Group)
+	onces  = &sync.Map{}
 
 	initPeerServerOnce sync.Once
 	initPeerServer     func()
@@ -89,6 +90,8 @@ func GetGroup(name string) *Group {
 //
 // The group name must be unique for each getter.
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
+	mu.Lock()
+	defer mu.Unlock()
 	return newGroup(name, cacheBytes, getter, nil)
 }
 
@@ -104,8 +107,6 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 	if getter == nil {
 		panic("nil Getter")
 	}
-	mu.Lock()
-	defer mu.Unlock()
 	initPeerServerOnce.Do(callInitPeerServer)
 	if _, dup := groups[name]; dup {
 		panic("duplicate registration of group " + name)
@@ -123,6 +124,22 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 	}
 	groups[name] = g
 	return g
+}
+
+// GetOrNewGroup returns the named group previously created with NewGroup, or
+// creates the group if there's no such group.
+func GetOrNewGroup(name string, cacheBytes int64, getter Getter) *Group {
+	g := GetGroup(name)
+	if g != nil {
+		return g
+	}
+	once, _ := onces.LoadOrStore(name, &sync.Once{})
+	mu.Lock()
+	defer mu.Unlock()
+	once.(*sync.Once).Do(func() {
+		g = newGroup(name, cacheBytes, getter, nil)
+	})
+	return groups[name]
 }
 
 // newGroupHook, if non-nil, is called right after a new group is created.
