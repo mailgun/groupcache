@@ -18,51 +18,45 @@ package consistenthash
 
 import (
 	"fmt"
-	"strconv"
+	"math/rand"
+	"net"
 	"testing"
+	"time"
+
+	"github.com/segmentio/fasthash/fnv1"
 )
 
 func TestHashing(t *testing.T) {
 
 	// Override the hash function to return easier to reason about values. Assumes
 	// the keys can be converted to an integer.
-	hash := New(3, func(key []byte) uint32 {
-		i, err := strconv.Atoi(string(key))
-		if err != nil {
-			panic(err)
-		}
-		return uint32(i)
-	})
+	hash := New(512, nil)
 
-	// Given the above hash function, this will give replicas with "hashes":
-	// 2, 4, 6, 12, 14, 16, 22, 24, 26
 	hash.Add("6", "4", "2")
 
 	testCases := map[string]string{
-		"2":  "2",
-		"11": "2",
-		"23": "4",
-		"27": "2",
+		"12,000":    "4",
+		"11":        "6",
+		"500,000":   "4",
+		"1,000,000": "2",
 	}
 
 	for k, v := range testCases {
-		if hash.Get(k) != v {
-			t.Errorf("Asking for %s, should have yielded %s", k, v)
+		if got := hash.Get(k); got != v {
+			t.Errorf("Asking for %s, should have yielded %s; got %s instead", k, v, got)
 		}
 	}
 
-	// Adds 8, 18, 28
 	hash.Add("8")
 
-	// 27 should now map to 8.
-	testCases["27"] = "8"
+	testCases["11"] = "8"
+	testCases["1,000,000"] = "8"
 
 	for k, v := range testCases {
-		if hash.Get(k) != v {
-			t.Errorf("Asking for %s, should have yielded %s", k, v)
+		if got := hash.Get(k); got != v {
+			t.Errorf("Asking for %s, should have yielded %s; got %s instead", k, v, got)
 		}
 	}
-
 }
 
 func TestConsistency(t *testing.T) {
@@ -77,13 +71,52 @@ func TestConsistency(t *testing.T) {
 	}
 
 	hash2.Add("Becky", "Ben", "Bobby")
+	hash1.Add("Becky", "Ben", "Bobby")
 
 	if hash1.Get("Ben") != hash2.Get("Ben") ||
 		hash1.Get("Bob") != hash2.Get("Bob") ||
 		hash1.Get("Bonny") != hash2.Get("Bonny") {
 		t.Errorf("Direct matches should always return the same entry")
 	}
+}
 
+func TestDistribution(t *testing.T) {
+	hosts := []string{"a.svc.local", "b.svc.local", "c.svc.local"}
+	rand.Seed(time.Now().Unix())
+	const cases = 10000
+
+	strings := make([]string, cases)
+
+	for i := 0; i < cases; i++ {
+		r := rand.Int31()
+		ip := net.IPv4(192, byte(r>>16), byte(r>>8), byte(r))
+		strings[i] = ip.String()
+	}
+
+	hashFuncs := map[string]Hash{
+		"fasthash/fnv1": fnv1.HashBytes64,
+	}
+
+	for name, hashFunc := range hashFuncs {
+		t.Run(name, func(t *testing.T) {
+			hash := New(512, hashFunc)
+			hostMap := map[string]int{}
+
+			for _, host := range hosts {
+				hash.Add(host)
+				hostMap[host] = 0
+			}
+
+			for i := range strings {
+				host := hash.Get(strings[i])
+				hostMap[host]++
+			}
+
+			for host, a := range hostMap {
+				t.Logf("host: %s, percent: %f", host, float64(a)/cases)
+			}
+		})
+	}
 }
 
 func BenchmarkGet8(b *testing.B)   { benchmarkGet(b, 8) }
