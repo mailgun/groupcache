@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"reflect"
+	"runtime/debug"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -37,7 +39,7 @@ import (
 
 var (
 	once                                 sync.Once
-	stringGroup, protoGroup, expireGroup Getter
+	stringGroup, protoGroup, expireGroup GroupGetter
 
 	stringc = make(chan string)
 
@@ -361,6 +363,11 @@ func TestPeers(t *testing.T) {
 }
 
 func TestTruncatingByteSliceTarget(t *testing.T) {
+	defer func() {
+		if p := recover(); p != nil {
+			t.Error("_panic", "panic", p, "stack", string(debug.Stack()))
+		}
+	}()
 	var buf [100]byte
 	s := buf[:]
 	if err := stringGroup.Get(dummyCtx, "short", TruncatingByteSliceSink(&s)); err != nil {
@@ -525,5 +532,50 @@ func TestContextDeadlineOnPeer(t *testing.T) {
 		if err != context.DeadlineExceeded {
 			t.Errorf("expected Get to return context deadline exceeded")
 		}
+	}
+}
+
+func TestGroupBatchGetFromLocal(t *testing.T) {
+	once.Do(testSetup)
+	peerList := fakePeers([]ProtoGetter{nil})
+	getter := func(_ context.Context, keyList []string, destList []Sink) []error {
+		errList := make([]error,0)
+		for i := 0; i < len(keyList); i++ {
+			val := ""
+			dest := StringSink(&val)
+			indexStr := strconv.FormatInt(int64(i),10)
+			err := dest.SetString(keyList[i] + "_" + indexStr, time.Time{})
+			if err != nil {
+				errList = append(errList,err)
+				continue
+			}
+			destList[i] = dest
+		}
+		return []error{}
+	}
+	testGroup := newGroup("TestContextDeadlineOnPeer-group", cacheSize, BatchGetterFunc(getter), peerList)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel()
+
+	keyList := make([]string,0)
+	for i := 0; i < 10; i++ {
+		indexStr := strconv.FormatInt(int64(i),10)
+		keyList = append(keyList,"key_" + indexStr)
+	}
+
+	destList := make([]Sink,len(keyList))
+	for i := 0; i < 10; i++ {
+		var got string
+		destList[i] = StringSink(&got)
+	}
+	errList := testGroup.BatchGet(ctx, keyList,destList)
+	if len(errList) > 0 {
+		if errList[0] != context.DeadlineExceeded {
+			t.Errorf("expected Get to return context deadline exceeded")
+		}
+	}
+
+	for _,dest := range destList {
+		t.Log(dest)
 	}
 }
