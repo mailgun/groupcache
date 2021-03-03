@@ -296,10 +296,10 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 
 func (g *Group) BatchGet(ctx context.Context, keyList []string, destList []Sink) []error {
 	g.peersOnce.Do(g.initPeers)
-	errList := make([]error,0)
+	errList := make([]error, 0)
 	if len(keyList) == 0 {
 		err := errors.New("groupcache: nil key list")
-		errList = append(errList,err)
+		errList = append(errList, err)
 		return errList
 	}
 
@@ -312,23 +312,23 @@ func (g *Group) BatchGet(ctx context.Context, keyList []string, destList []Sink)
 		return errList
 	}
 
-	batchLoadValues, err := g.batchLoad(ctx, missKeyList,destList)
+	batchLoadValues, err := g.batchLoad(ctx, missKeyList, destList)
 	if err != nil {
-		errList = append(errList,err)
+		errList = append(errList, err)
 		return errList
 	}
 
-	for index,key := range keyList {
-		if value,ok := lookUpCachevalues[key];ok {
+	for index, key := range keyList {
+		if value, ok := lookUpCachevalues[key]; ok {
 			err := setSinkView(destList[index], value)
 			if err != nil {
-				errList = append(errList,err)
+				errList = append(errList, err)
 				continue
 			}
-		} else if value,ok := batchLoadValues[key];ok {
+		} else if value, ok := batchLoadValues[key]; ok {
 			err := setSinkView(destList[index], value)
 			if err != nil {
-				errList = append(errList,err)
+				errList = append(errList, err)
 				continue
 			}
 		}
@@ -474,21 +474,21 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 	return
 }
 
-func (g *Group) batchLoad(ctx context.Context, keyList []string,destList []Sink) (values map[string]ByteView, err error) {
+func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink) (values map[string]ByteView, err error) {
 	peersMap := make(map[ProtoGetter][]string)
-	locallyKeyList := make([]string,0)
-	for _,key := range keyList {
+	locallyKeyList := make([]string, 0)
+	for _, key := range keyList {
 		if peer, ok := g.peers.PickPeer(key); ok {
-			if peerKeyList,ok := peersMap[peer];ok {
-				peerKeyList = append(peerKeyList,key)
+			if peerKeyList, ok := peersMap[peer]; ok {
+				peerKeyList = append(peerKeyList, key)
 				peersMap[peer] = peerKeyList
 			} else {
-				peerKeyList := make([]string,0)
-				peerKeyList = append(peerKeyList,key)
+				peerKeyList := make([]string, 0)
+				peerKeyList = append(peerKeyList, key)
 				peersMap[peer] = peerKeyList
 			}
 		} else {
-			locallyKeyList = append(locallyKeyList,key)
+			locallyKeyList = append(locallyKeyList, key)
 		}
 	}
 
@@ -505,7 +505,7 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string,destList []Sink)
 			if len(errList) > 0 {
 				g.Stats.LocalLoadErrs.Add(int64(len(errList)))
 			}
-			for index,key := range locallyKeyList {
+			for index, key := range locallyKeyList {
 				syncMap.Lock()
 				syncMap.values[key] = valueList[index]
 				syncMap.Unlock()
@@ -513,62 +513,44 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string,destList []Sink)
 		}()
 	}
 
-	for peerGetter,keyList := range peersMap {
+	for peerGetter, keyList := range peersMap {
 		waitGroup.Add(1)
 		newPeerGetter := peerGetter
 		go func() {
 			defer waitGroup.Done()
 			// metrics duration start
-			for _,key := range keyList {
-				start := time.Now()
+			start := time.Now()
+			values, err := g.getFromPeerByKeyList(ctx, newPeerGetter, keyList)
+			duration := int64(time.Since(start)) / int64(time.Millisecond)
 
-				// get value from peers
-				value, err := g.getFromPeer(ctx, newPeerGetter, key)
-
-				// metrics duration compute
-				duration := int64(time.Since(start)) / int64(time.Millisecond)
-
-				// metrics only store the slowest duration
-				if g.Stats.GetFromPeersLatencyLower.Get() < duration {
-					g.Stats.GetFromPeersLatencyLower.Store(duration)
-				}
-
-				if err == nil {
-					g.Stats.PeerLoads.Add(1)
-					syncMap.Lock()
-					syncMap.values[key] = value
-					syncMap.Unlock()
-					continue
-				}
-
-				if logger != nil {
-					logger.WithFields(logrus.Fields{
-						"err":      err,
-						"key":      key,
-						"category": "groupcache",
-					}).Errorf("error retrieving key from peer '%s'", newPeerGetter.GetURL())
-				}
-
-				g.Stats.PeerErrors.Add(1)
-				if ctx != nil && ctx.Err() != nil {
-					// Return here without attempting to get locally
-					// since the context is no longer valid
-					//return nil, err
-					syncMap.Lock()
-					syncMap.values[key] = ByteView{}
-					syncMap.Unlock()
-					continue
-				}
-				// TODO(bradfitz): log the peer's error? keep
-				// log of the past few for /groupcachez?  It's
-				// probably boring (normal task movement), so not
-				// worth logging I imagine.
+			// metrics only store the slowest duration
+			if g.Stats.GetFromPeersLatencyLower.Get() < duration {
+				g.Stats.GetFromPeersLatencyLower.Store(duration)
 			}
+
+			if err == nil {
+				g.Stats.PeerLoads.Add(1)
+				syncMap.Lock()
+				for index, value := range values {
+					syncMap.values[keyList[index]] = value
+				}
+				syncMap.Unlock()
+				return
+			}
+
+			if logger != nil {
+				logger.WithFields(logrus.Fields{
+					"err":      err,
+					"keyList":  keyList,
+					"category": "groupcache",
+				}).Errorf("error retrieving key from peer '%s'", newPeerGetter.GetURL())
+			}
+			g.Stats.PeerErrors.Add(int64(len(values)))
 		}()
 	}
 
 	waitGroup.Wait()
-	return syncMap.values,err
+	return syncMap.values, err
 }
 func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView, error) {
 	err := g.getter.Get(ctx, key, dest)
@@ -578,16 +560,15 @@ func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView
 	return dest.view()
 }
 
-
 func (g *Group) batchGetLocally(ctx context.Context, keyList []string, destList []Sink) (byteViewList []ByteView, errList []error) {
 	errList = g.getter.BatchGet(ctx, keyList, destList)
 	if len(errList) > 0 {
 		return byteViewList, errList
 	}
 
-	byteViewList = make([]ByteView,len(destList))
-	for index,dest := range destList {
-		view,err := dest.view()
+	byteViewList = make([]ByteView, len(destList))
+	for index, dest := range destList {
+		view, err := dest.view()
 		if err != nil {
 			byteViewList[index] = ByteView{}
 		} else {
@@ -622,32 +603,35 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	g.populateCache(key, value, &g.hotCache)
 	return value, nil
 }
-//
-//func (g *Group) getFromPeerByKeyList(ctx context.Context, peer ProtoGetter, key []string) (ByteView, error) {
-//	req := &pb.GetRequest{
-//		Group: &g.name,
-//		Key:   &key,
-//	}
-//	res := &pb.GetResponse{}
-//	err := peer.Get(ctx, req, res)
-//	if err != nil {
-//		return ByteView{}, err
-//	}
-//
-//	var expire time.Time
-//	if res.Expire != nil && *res.Expire != 0 {
-//		expire = time.Unix(*res.Expire/int64(time.Second), *res.Expire%int64(time.Second))
-//		if time.Now().After(expire) {
-//			return ByteView{}, errors.New("peer returned expired value")
-//		}
-//	}
-//
-//	value := ByteView{b: res.Value, e: expire}
-//
-//	// Always populate the hot cache
-//	g.populateCache(key, value, &g.hotCache)
-//	return value, nil
-//}
+
+func (g *Group) getFromPeerByKeyList(ctx context.Context, peer ProtoGetter, keyList []string) ([]ByteView, error) {
+	req := &pb.GetListRequest{
+		Group:   &g.name,
+		KeyList: keyList,
+	}
+	res := &pb.GetListResponse{}
+	err := peer.BatchGet(ctx, req, res)
+	if err != nil {
+		return []ByteView{}, err
+	}
+
+	resultByteView := make([]ByteView, 0, len(keyList))
+	for index, kv := range res.KvList {
+		var expire time.Time
+		if kv.Expire != nil && *kv.Expire != 0 {
+			expire = time.Unix(*kv.Expire/int64(time.Second), *kv.Expire%int64(time.Second))
+			if time.Now().After(expire) {
+				resultByteView = append(resultByteView, ByteView{})
+				continue
+			}
+		}
+
+		value := ByteView{b: kv.Value, e: expire}
+		g.populateCache(keyList[index], value, &g.hotCache)
+		resultByteView = append(resultByteView, value)
+	}
+	return resultByteView, nil
+}
 
 func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string) error {
 	req := &pb.GetRequest{
@@ -669,13 +653,13 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	return
 }
 
-func (g *Group) lookupCacheByKeyList(keyList []string) (values map[string]ByteView, missKey[]string) {
+func (g *Group) lookupCacheByKeyList(keyList []string) (values map[string]ByteView, missKey []string) {
 	if g.cacheBytes <= 0 {
-		return values,keyList
+		return values, keyList
 	}
-	missKey = make([]string,0)
+	missKey = make([]string, 0)
 	values = make(map[string]ByteView)
-	for _,key := range keyList {
+	for _, key := range keyList {
 		value, ok := g.mainCache.get(key)
 		if ok {
 			values[key] = value
@@ -686,7 +670,7 @@ func (g *Group) lookupCacheByKeyList(keyList []string) (values map[string]ByteVi
 			values[key] = value
 			continue
 		}
-		missKey = append(missKey,key)
+		missKey = append(missKey, key)
 	}
 	return
 }

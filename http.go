@@ -191,33 +191,79 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var b []byte
+	if !strings.Contains(key, ",") {
+		var b []byte
+		value := AllocatingByteSliceSink(&b)
+		err := group.Get(ctx, key, value)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	value := AllocatingByteSliceSink(&b)
-	err := group.Get(ctx, key, value)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		view, err := value.view()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var expireNano int64
+		if !view.e.IsZero() {
+			expireNano = view.Expire().UnixNano()
+		}
+
+		// Write the value to the response body as a proto message.
+		body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		w.Write(body)
 		return
 	}
 
-	view, err := value.view()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	keyList := strings.Split(key, ",")
+	values := make([]Sink, len(keyList))
+	for index := range values {
+		var b []byte
+		value := AllocatingByteSliceSink(&b)
+		values[index] = value
+	}
+	errList := group.BatchGet(ctx, keyList, values)
+	if len(errList) > 0 {
+		http.Error(w, errList[0].Error(), http.StatusInternalServerError)
 		return
 	}
-	var expireNano int64
-	if !view.e.IsZero() {
-		expireNano = view.Expire().UnixNano()
-	}
 
+	responseList := make([]*pb.GetResponse, len(keyList))
+	for index, value := range values {
+		view, err := value.view()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var expireNano int64
+		if !view.e.IsZero() {
+			expireNano = view.Expire().UnixNano()
+		}
+
+		var byteData []byte
+		if view.b != nil {
+			byteData = view.b
+		} else {
+			byteData = []byte(view.s)
+		}
+		response := pb.GetResponse{Value: byteData, Expire: &expireNano}
+		responseList[index] = &response
+	}
 	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
+	body, err := proto.Marshal(&pb.GetListResponse{KvList: responseList})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-protobuf")
 	w.Write(body)
+	return
 }
 
 type httpGetter struct {
@@ -262,9 +308,61 @@ func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetR
 	return nil
 }
 
+func (h *httpGetter) makeBatchRequest(ctx context.Context, method string, in *pb.GetListRequest, out *http.Response) error {
+	keysStr := strings.Join(in.KeyList, ",")
+	u := fmt.Sprintf(
+		"%v%v/%v",
+		h.baseURL,
+		url.QueryEscape(in.GetGroup()),
+		url.QueryEscape(keysStr),
+	)
+	req, err := http.NewRequest(method, u, nil)
+	if err != nil {
+		return err
+	}
+
+	// Pass along the context to the RoundTripper
+	req = req.WithContext(ctx)
+
+	tr := http.DefaultTransport
+	if h.getTransport != nil {
+		tr = h.getTransport(ctx)
+	}
+
+	res, err := tr.RoundTrip(req)
+	if err != nil {
+		return err
+	}
+	*out = *res
+	return nil
+}
+
 func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodGet, in, &res); err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned: %v", res.Status)
+	}
+	b := bufferPool.Get().(*bytes.Buffer)
+	b.Reset()
+	defer bufferPool.Put(b)
+	_, err := io.Copy(b, res.Body)
+	if err != nil {
+		return fmt.Errorf("reading response body: %v", err)
+	}
+	err = proto.Unmarshal(b.Bytes(), out)
+	if err != nil {
+		return fmt.Errorf("decoding response body: %v", err)
+	}
+	return nil
+}
+
+func (h *httpGetter) BatchGet(ctx context.Context, in *pb.GetListRequest, out *pb.GetListResponse) error {
+	var res http.Response
+	if err := h.makeBatchRequest(ctx, http.MethodGet, in, &res); err != nil {
 		return err
 	}
 	defer res.Body.Close()
