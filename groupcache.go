@@ -308,10 +308,6 @@ func (g *Group) BatchGet(ctx context.Context, keyList []string, destList []Sink)
 	g.Stats.CacheHits.Add(int64(len(keyList) - len(missKeyList)))
 
 	// get all data from local cache
-	if len(missKeyList) == 0 {
-		return errList
-	}
-
 	batchLoadValues, err := g.batchLoad(ctx, missKeyList, destList)
 	if err != nil {
 		errList = append(errList, err)
@@ -475,6 +471,9 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 }
 
 func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink) (values map[string]ByteView, err error) {
+	if len(keyList) == 0 {
+		return
+	}
 	peersMap := make(map[ProtoGetter][]string)
 	locallyKeyList := make([]string, 0)
 	for _, key := range keyList {
@@ -508,6 +507,7 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 			for index, key := range locallyKeyList {
 				syncMap.Lock()
 				syncMap.values[key] = valueList[index]
+				g.populateCache(key, valueList[index], &g.mainCache)
 				syncMap.Unlock()
 			}
 		}()
@@ -516,11 +516,12 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 	for peerGetter, keyList := range peersMap {
 		waitGroup.Add(1)
 		newPeerGetter := peerGetter
+		newKeyList := keyList
 		go func() {
 			defer waitGroup.Done()
 			// metrics duration start
 			start := time.Now()
-			values, err := g.getFromPeerByKeyList(ctx, newPeerGetter, keyList)
+			values, err := g.getFromPeerByKeyList(ctx, newPeerGetter, newKeyList)
 			duration := int64(time.Since(start)) / int64(time.Millisecond)
 
 			// metrics only store the slowest duration
@@ -532,7 +533,7 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 				g.Stats.PeerLoads.Add(1)
 				syncMap.Lock()
 				for index, value := range values {
-					syncMap.values[keyList[index]] = value
+					syncMap.values[newKeyList[index]] = value
 				}
 				syncMap.Unlock()
 				return
@@ -545,7 +546,20 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 					"category": "groupcache",
 				}).Errorf("error retrieving key from peer '%s'", newPeerGetter.GetURL())
 			}
-			g.Stats.PeerErrors.Add(int64(len(values)))
+			g.Stats.PeerErrors.Add(1)
+
+			// if peer is failing, then get data from local
+			newDestList := make([]Sink, len(newKeyList))
+			valueList, errList := g.batchGetLocally(ctx, newKeyList, newDestList)
+			if len(errList) > 0 {
+				g.Stats.LocalLoadErrs.Add(int64(len(errList)))
+			}
+			for index, key := range newKeyList {
+				syncMap.Lock()
+				syncMap.values[key] = valueList[index]
+				g.populateCache(key, valueList[index], &g.mainCache)
+				syncMap.Unlock()
+			}
 		}()
 	}
 
