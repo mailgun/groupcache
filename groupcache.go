@@ -307,13 +307,13 @@ func (g *Group) BatchGet(ctx context.Context, keyList []string, destList []Sink)
 	lookUpCachevalues, missKeyList := g.lookupCacheByKeyList(keyList)
 	g.Stats.CacheHits.Add(int64(len(keyList) - len(missKeyList)))
 
-	// get all data from local cache
 	batchLoadValues, err := g.batchLoad(ctx, missKeyList, destList)
 	if err != nil {
 		errList = append(errList, err)
 		return errList
 	}
 
+	// sort return data by input keys
 	for index, key := range keyList {
 		if value, ok := lookUpCachevalues[key]; ok {
 			err := setSinkView(destList[index], value)
@@ -474,6 +474,7 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 	if len(keyList) == 0 {
 		return
 	}
+
 	peersMap := make(map[ProtoGetter][]string)
 	locallyKeyList := make([]string, 0)
 	for _, key := range keyList {
@@ -548,7 +549,7 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 			}
 			g.Stats.PeerErrors.Add(1)
 
-			// if peer is failing, then get data from local
+			// if request peer is failing, then get data from local
 			newDestList := make([]Sink, len(newKeyList))
 			valueList, errList := g.batchGetLocally(ctx, newKeyList, newDestList)
 			if len(errList) > 0 {
