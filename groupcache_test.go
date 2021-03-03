@@ -265,6 +265,10 @@ func (p *fakePeer) Get(_ context.Context, in *pb.GetRequest, out *pb.GetResponse
 	return nil
 }
 
+func (p *fakePeer) BatchGet(_ context.Context, in *pb.GetListRequest, out *pb.GetListResponse) error {
+	return nil
+}
+
 func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
 	p.hits++
 	if p.fail {
@@ -539,14 +543,14 @@ func TestGroupBatchGetFromLocal(t *testing.T) {
 	once.Do(testSetup)
 	peerList := fakePeers([]ProtoGetter{nil})
 	getter := func(_ context.Context, keyList []string, destList []Sink) []error {
-		errList := make([]error,0)
+		errList := make([]error, 0)
 		for i := 0; i < len(keyList); i++ {
 			val := ""
 			dest := StringSink(&val)
-			indexStr := strconv.FormatInt(int64(i),10)
-			err := dest.SetString(keyList[i] + "_" + indexStr, time.Time{})
+			indexStr := strconv.FormatInt(int64(i), 10)
+			err := dest.SetString(keyList[i]+"_"+indexStr, time.Time{})
 			if err != nil {
-				errList = append(errList,err)
+				errList = append(errList, err)
 				continue
 			}
 			destList[i] = dest
@@ -557,25 +561,25 @@ func TestGroupBatchGetFromLocal(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
 	defer cancel()
 
-	keyList := make([]string,0)
+	keyList := make([]string, 0)
 	for i := 0; i < 10; i++ {
-		indexStr := strconv.FormatInt(int64(i),10)
-		keyList = append(keyList,"key_" + indexStr)
+		indexStr := strconv.FormatInt(int64(i), 10)
+		keyList = append(keyList, "key_"+indexStr)
 	}
 
-	destList := make([]Sink,len(keyList))
+	destList := make([]Sink, len(keyList))
 	for i := 0; i < 10; i++ {
 		var got string
 		destList[i] = StringSink(&got)
 	}
-	errList := testGroup.BatchGet(ctx, keyList,destList)
+	errList := testGroup.BatchGet(ctx, keyList, destList)
 	if len(errList) > 0 {
 		if errList[0] != context.DeadlineExceeded {
 			t.Errorf("expected Get to return context deadline exceeded")
 		}
 	}
 
-	for _,dest := range destList {
+	for _, dest := range destList {
 		t.Log(dest)
 	}
 }

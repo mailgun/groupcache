@@ -85,7 +85,6 @@ func ExampleUsage() {
 	// IsSuper: true
 }
 
-
 // tests that peers (virtual, in-process) are hit, and how much.
 //func TestHttpPeers1(t *testing.T) {
 //	pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{Replicas: 20})
