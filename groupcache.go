@@ -622,6 +622,32 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	g.populateCache(key, value, &g.hotCache)
 	return value, nil
 }
+//
+//func (g *Group) getFromPeerByKeyList(ctx context.Context, peer ProtoGetter, key []string) (ByteView, error) {
+//	req := &pb.GetRequest{
+//		Group: &g.name,
+//		Key:   &key,
+//	}
+//	res := &pb.GetResponse{}
+//	err := peer.Get(ctx, req, res)
+//	if err != nil {
+//		return ByteView{}, err
+//	}
+//
+//	var expire time.Time
+//	if res.Expire != nil && *res.Expire != 0 {
+//		expire = time.Unix(*res.Expire/int64(time.Second), *res.Expire%int64(time.Second))
+//		if time.Now().After(expire) {
+//			return ByteView{}, errors.New("peer returned expired value")
+//		}
+//	}
+//
+//	value := ByteView{b: res.Value, e: expire}
+//
+//	// Always populate the hot cache
+//	g.populateCache(key, value, &g.hotCache)
+//	return value, nil
+//}
 
 func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string) error {
 	req := &pb.GetRequest{

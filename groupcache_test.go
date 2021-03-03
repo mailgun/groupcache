@@ -553,7 +553,7 @@ func TestGroupBatchGetFromLocal(t *testing.T) {
 		}
 		return []error{}
 	}
-	testGroup := newGroup("TestContextDeadlineOnPeer-group", cacheSize, BatchGetterFunc(getter), peerList)
+	testGroup := newGroup("TestGroupBatchGetFromLocal-group", cacheSize, BatchGetterFunc(getter), peerList)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
 	defer cancel()
 
