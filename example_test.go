@@ -3,10 +3,9 @@ package groupcache_test
 import (
 	"context"
 	"fmt"
+	"github.com/mailgun/groupcache/v2"
 	"log"
 	"time"
-
-	"github.com/mailgun/groupcache/v2"
 )
 
 func ExampleUsage() {
@@ -55,6 +54,29 @@ func ExampleUsage() {
 			return nil
 		},
 	))
+
+	//group2 := groupcache.NewGroup("users", 3000000, groupcache.BatchGetterFunc(
+	//	func(ctx context.Context, id []string, dest []groupcache.Sink) error {
+	//
+	//		// In a real scenario we might fetch the value from a database.
+	//		/*if user, err := fetchUserFromMongo(ctx, id); err != nil {
+	//			return err
+	//		}*/
+	//
+	//		//user := User{
+	//		//	Id:      "12345",
+	//		//	Name:    "John Doe",
+	//		//	Age:     40,
+	//		//	IsSuper: true,
+	//		//}
+	//		//
+	//		//// Set the user in the groupcache to expire after 5 minutes
+	//		//if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
+	//		//	return err
+	//		//}
+	//		return nil
+	//	},
+	//))
 
 	var user User
 

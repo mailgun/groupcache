@@ -24,6 +24,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"reflect"
+	"runtime/debug"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -37,7 +39,7 @@ import (
 
 var (
 	once                                 sync.Once
-	stringGroup, protoGroup, expireGroup Getter
+	stringGroup, protoGroup, expireGroup GroupGetter
 
 	stringc = make(chan string)
 
@@ -263,6 +265,23 @@ func (p *fakePeer) Get(_ context.Context, in *pb.GetRequest, out *pb.GetResponse
 	return nil
 }
 
+func (p *fakePeer) BatchGet(_ context.Context, in *pb.GetListRequest, out *pb.GetListResponse) error {
+	p.hits = p.hits + len(in.KeyList)
+	if p.fail {
+		return errors.New("simulated error from peer")
+	}
+
+	outModelList := make([]*pb.GetResponse, len(in.KeyList))
+	for index, key := range in.KeyList {
+		outModel := &pb.GetResponse{
+			Value: []byte("got:" + key),
+		}
+		outModelList[index] = outModel
+	}
+	out.KvList = outModelList
+	return nil
+}
+
 func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
 	p.hits++
 	if p.fail {
@@ -360,7 +379,111 @@ func TestPeers(t *testing.T) {
 	run("peer0_failing", 200, "localHits = 100, peers = 51 49 51")
 }
 
+// tests that peers (virtual, in-process) are hit, and how much.
+func TestBatchGetPeers(t *testing.T) {
+	once.Do(testSetup)
+	peer0 := &fakePeer{}
+	peer1 := &fakePeer{}
+	peer2 := &fakePeer{}
+	peerList := fakePeers([]ProtoGetter{peer0, peer1, peer2, nil})
+	const cacheSize = 0 // disabled
+	localHits := 0
+	getter := func(_ context.Context, keyList []string, destList []Sink) []error {
+		localHits = localHits + len(keyList)
+		errList := make([]error, 0)
+		for index := range keyList {
+			val := "got:" + keyList[index]
+			dest := StringSink(&val)
+			err := dest.SetString("got:"+keyList[index], time.Time{})
+			if err != nil {
+				errList = append(errList, err)
+				continue
+			}
+			destList[index] = dest
+		}
+		return errList
+	}
+	testGroup := newGroup("TestBatchGetPeers-group", cacheSize, BatchGetterFunc(getter), peerList)
+	run := func(name string, n int, wantSummary string) {
+		// Reset counters
+		localHits = 0
+		for _, p := range []*fakePeer{peer0, peer1, peer2} {
+			p.hits = 0
+		}
+
+		keyList := make([]string, n)
+		wantList := make([]string, n)
+		gotList := make([]string, n)
+		destList := make([]Sink, n)
+		for i := 0; i < n; i++ {
+			key := fmt.Sprintf("key-%d", i)
+			keyList[i] = key
+			want := "got:" + key
+			wantList[i] = want
+			destList[i] = StringSink(&gotList[i])
+		}
+		errList := testGroup.BatchGet(dummyCtx, keyList, destList)
+		if len(errList) > 0 {
+			for index, err := range errList {
+				t.Errorf("%s: error on key %q: %v", name, keyList[index], err)
+			}
+		}
+
+		for index, dest := range destList {
+			view, err := dest.view()
+			if err != nil {
+				t.Errorf("%s: error on key %q: %v", name, keyList[index], err)
+			}
+			gotList[index] = view.s
+		}
+		for index, want := range wantList {
+			if gotList[index] != want {
+				t.Errorf("%s: for key %q, got %q; want %q", name, keyList[index], gotList[index], want)
+			}
+		}
+		summary := func() string {
+			return fmt.Sprintf("localHits = %d, peers = %d %d %d", localHits, peer0.hits, peer1.hits, peer2.hits)
+		}
+		if got := summary(); got != wantSummary {
+			t.Errorf("%s: got %q; want %q", name, got, wantSummary)
+		}
+	}
+	resetCacheSize := func(maxBytes int64) {
+		g := testGroup
+		g.cacheBytes = maxBytes
+		g.mainCache = cache{}
+		g.hotCache = cache{}
+	}
+
+	// Base case; peers all up, with no problems.
+	resetCacheSize(1 << 20)
+	run("base", 200, "localHits = 49, peers = 51 49 51")
+
+	// Verify cache was hit.  All localHits and peers are gone as the hotCache has
+	// the data we need
+	run("cached_base", 200, "localHits = 0, peers = 0 0 0")
+	resetCacheSize(0)
+
+	// With one of the peers being down.
+	// TODO(bradfitz): on a peer number being unavailable, the
+	// consistent hashing should maybe keep trying others to
+	// spread the load out. Currently it fails back to local
+	// execution if the first consistent-hash slot is unavailable.
+	peerList[0] = nil
+	run("one_peer_down", 200, "localHits = 100, peers = 0 49 51")
+
+	//// Failing peer
+	peerList[0] = peer0
+	peer0.fail = true
+	run("peer0_failing", 200, "localHits = 100, peers = 51 49 51")
+}
+
 func TestTruncatingByteSliceTarget(t *testing.T) {
+	defer func() {
+		if p := recover(); p != nil {
+			t.Error("_panic", "panic", p, "stack", string(debug.Stack()))
+		}
+	}()
 	var buf [100]byte
 	s := buf[:]
 	if err := stringGroup.Get(dummyCtx, "short", TruncatingByteSliceSink(&s)); err != nil {
@@ -525,5 +648,50 @@ func TestContextDeadlineOnPeer(t *testing.T) {
 		if err != context.DeadlineExceeded {
 			t.Errorf("expected Get to return context deadline exceeded")
 		}
+	}
+}
+
+func TestGroupBatchGetFromLocal(t *testing.T) {
+	once.Do(testSetup)
+	peerList := fakePeers([]ProtoGetter{nil})
+	getter := func(_ context.Context, keyList []string, destList []Sink) []error {
+		errList := make([]error, 0)
+		for i := 0; i < len(keyList); i++ {
+			val := ""
+			dest := StringSink(&val)
+			indexStr := strconv.FormatInt(int64(i), 10)
+			err := dest.SetString(keyList[i]+"_"+indexStr, time.Time{})
+			if err != nil {
+				errList = append(errList, err)
+				continue
+			}
+			destList[i] = dest
+		}
+		return []error{}
+	}
+	testGroup := newGroup("TestGroupBatchGetFromLocal-group", cacheSize, BatchGetterFunc(getter), peerList)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*300)
+	defer cancel()
+
+	keyList := make([]string, 0)
+	for i := 0; i < 10; i++ {
+		indexStr := strconv.FormatInt(int64(i), 10)
+		keyList = append(keyList, "key_"+indexStr)
+	}
+
+	destList := make([]Sink, len(keyList))
+	for i := 0; i < 10; i++ {
+		var got string
+		destList[i] = StringSink(&got)
+	}
+	errList := testGroup.BatchGet(ctx, keyList, destList)
+	if len(errList) > 0 {
+		if errList[0] != context.DeadlineExceeded {
+			t.Errorf("expected Get to return context deadline exceeded")
+		}
+	}
+
+	for _, dest := range destList {
+		t.Log(dest)
 	}
 }

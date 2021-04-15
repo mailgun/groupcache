@@ -23,10 +23,19 @@ message GetRequest {
   required string key = 2; // not actually required/guaranteed to be UTF-8
 }
 
+message GetListRequest {
+  required string group = 1;
+  repeated string keyList = 2; // not actually required/guaranteed to be UTF-8
+}
+
 message GetResponse {
   optional bytes value = 1;
   optional double minute_qps = 2;
   optional int64 expire = 3;
+}
+
+message GetListResponse {
+  repeated GetResponse kvList = 1;
 }
 
 service GroupCache {
