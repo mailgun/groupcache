@@ -27,6 +27,7 @@ package groupcache
 import (
 	"context"
 	"errors"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -514,58 +515,87 @@ func (g *Group) batchLoad(ctx context.Context, keyList []string, destList []Sink
 		}()
 	}
 
-	for peerGetter, keyList := range peersMap {
-		waitGroup.Add(1)
-		newPeerGetter := peerGetter
-		newKeyList := keyList
-		go func() {
-			defer waitGroup.Done()
-			// metrics duration start
-			start := time.Now()
-			values, err := g.getFromPeerByKeyList(ctx, newPeerGetter, newKeyList)
-			duration := int64(time.Since(start)) / int64(time.Millisecond)
+	p := 50
+	c := make(chan func(), p)
+	go func() {
+		for peerGetter, keyList := range peersMap {
+			waitGroup.Add(1)
+			newPeerGetter := peerGetter
+			newKeyList := keyList
+			c <- func() {
+				defer waitGroup.Done()
+				// metrics duration start
+				start := time.Now()
+				values, err := g.getFromPeerByKeyList(ctx, newPeerGetter, newKeyList)
+				duration := int64(time.Since(start)) / int64(time.Millisecond)
 
-			// metrics only store the slowest duration
-			if g.Stats.GetFromPeersLatencyLower.Get() < duration {
-				g.Stats.GetFromPeersLatencyLower.Store(duration)
-			}
-
-			if err == nil {
-				g.Stats.PeerLoads.Add(1)
-				syncMap.Lock()
-				for index, value := range values {
-					syncMap.values[newKeyList[index]] = value
+				// metrics only store the slowest duration
+				if g.Stats.GetFromPeersLatencyLower.Get() < duration {
+					g.Stats.GetFromPeersLatencyLower.Store(duration)
 				}
-				syncMap.Unlock()
-				return
-			}
 
-			if logger != nil {
-				logger.WithFields(logrus.Fields{
-					"err":      err,
-					"keyList":  keyList,
-					"category": "groupcache",
-				}).Errorf("error retrieving key from peer '%s'", newPeerGetter.GetURL())
-			}
-			g.Stats.PeerErrors.Add(1)
+				if err == nil {
+					g.Stats.PeerLoads.Add(1)
+					syncMap.Lock()
+					for index, value := range values {
+						syncMap.values[newKeyList[index]] = value
+					}
+					syncMap.Unlock()
+					return
+				}
 
-			// if request peer is failing, then get data from local
-			newDestList := make([]Sink, len(newKeyList))
-			valueList, errList := g.batchGetLocally(ctx, newKeyList, newDestList)
-			if len(errList) > 0 {
-				g.Stats.LocalLoadErrs.Add(int64(len(errList)))
-			}
-			for index, key := range newKeyList {
-				syncMap.Lock()
-				syncMap.values[key] = valueList[index]
-				g.populateCache(key, valueList[index], &g.mainCache)
-				syncMap.Unlock()
-			}
-		}()
-	}
+				if logger != nil {
+					logger.WithFields(logrus.Fields{
+						"err":      err,
+						"keyList":  keyList,
+						"category": "groupcache",
+					}).Errorf("error retrieving key from peer '%s'", newPeerGetter.GetURL())
+				}
+				g.Stats.PeerErrors.Add(1)
 
-	waitGroup.Wait()
+				// if request peer is failing, then get data from local
+				newDestList := make([]Sink, len(newKeyList))
+				valueList, errList := g.batchGetLocally(ctx, newKeyList, newDestList)
+				if len(errList) > 0 {
+					g.Stats.LocalLoadErrs.Add(int64(len(errList)))
+				}
+				for index, key := range newKeyList {
+					syncMap.Lock()
+					syncMap.values[key] = valueList[index]
+					g.populateCache(key, valueList[index], &g.mainCache)
+					syncMap.Unlock()
+				}
+			}
+			close(c)
+		}
+	}()
+	parallelDo(ctx, p, c)
 	return syncMap.values, err
+}
+
+func parallelDo(ctx context.Context, p int, c <-chan func()) {
+	wg := sync.WaitGroup{}
+	for i := 0; i < p; i++ {
+		wg.Add(1)
+		go recoverFuncWithWg(func() {
+			for f := range c {
+				f()
+			}
+		}, ctx, &wg)
+	}
+	wg.Wait()
+}
+
+func recoverFuncWithWg(f func(), ctx context.Context, wg *sync.WaitGroup) {
+	defer func() {
+		if p := recover(); p != nil {
+			logger.Error(ctx, "_panic", "panic", p, "stack", string(debug.Stack()))
+			wg.Done()
+		} else {
+			wg.Done()
+		}
+	}()
+	f()
 }
 func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView, error) {
 	err := g.getter.Get(ctx, key, dest)
