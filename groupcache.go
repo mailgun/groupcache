@@ -640,7 +640,7 @@ func (c *cache) set(key string, value interface{}) {
 	if c.lru == nil {
 		return
 	}
-	c.lru.Add(key, value, ) // TODO: add duration
+	c.lru.Add(key, value, time.Now().Add(60*time.Minute)) // TODO: parameterize this
 }
 
 func (c *cache) remove(key string) {
