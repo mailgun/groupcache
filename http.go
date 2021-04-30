@@ -285,6 +285,23 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	return nil
 }
 
+func (h *httpGetter) Set(ctx context.Context, in *pb.GetRequest) error {
+	var res http.Response
+	if err := h.makeRequest(ctx, http.MethodPut, in, &res); err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("while reading body response: %v", res.Status)
+		}
+		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
+	}
+	return nil
+}
+
 func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {

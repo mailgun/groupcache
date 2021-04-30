@@ -263,6 +263,14 @@ func (p *fakePeer) Get(_ context.Context, in *pb.GetRequest, out *pb.GetResponse
 	return nil
 }
 
+func (p *fakePeer) Set(_ context.Context, in *pb.GetRequest) error {
+	p.hits++
+	if p.fail {
+		return errors.New("simulated error from peer")
+	}
+	return nil
+}
+
 func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
 	p.hits++
 	if p.fail {

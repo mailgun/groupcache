@@ -151,6 +151,24 @@ func TestHTTPPool(t *testing.T) {
 	if serverHits != 2 {
 		t.Error("expected serverHits to be '2'")
 	}
+
+	key = "setTestKey"
+	setValue := "test set"
+	var getValue string
+	// Add the key to the cache
+	if err := g.Set(ctx, key, setValue); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the key
+	if err := g.Get(ctx, key, StringSink(&getValue)); err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: why is this like this?
+	if fmt.Sprintf("\"%s\"", setValue) != getValue {
+		t.Fatal(errors.New(fmt.Sprintf("incorrect value retrieved after set: %s", getValue)))
+	}
 }
 
 func testKeys(n int) (keys []string) {

@@ -26,6 +26,7 @@ package groupcache
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"sync"
@@ -116,6 +117,7 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		peers:       peers,
 		cacheBytes:  cacheBytes,
 		loadGroup:   &singleflight.Group{},
+		setGroup:   &singleflight.Group{},
 		removeGroup: &singleflight.Group{},
 	}
 	if fn := newGroupHook; fn != nil {
@@ -510,9 +512,19 @@ func (g *Group) localSet(key string, value interface{}) {
 		return
 	}
 
+	buf, err := json.Marshal(value)
+	if err != nil {
+		return
+	}
+
+	bv := ByteView{
+		b: buf,
+		e: time.Time{},
+	}
+
 	g.loadGroup.Lock(func() {
-		g.hotCache.set(key, value)
-		g.mainCache.set(key, value)
+		g.hotCache.set(key, bv)
+		g.mainCache.set(key, bv)
 	})
 }
 
@@ -634,7 +646,7 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	return vi.(ByteView), true
 }
 
-func (c *cache) set(key string, value interface{}) {
+func (c *cache) set(key string, value ByteView) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lru == nil {
