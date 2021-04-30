@@ -156,7 +156,7 @@ func TestHTTPPool(t *testing.T) {
 	setValue := "test set"
 	var getValue string
 	// Add the key to the cache
-	if err := g.Set(ctx, key, setValue); err != nil {
+	if err := g.Set(ctx, key, []byte(setValue)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,8 +165,7 @@ func TestHTTPPool(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// TODO: why is this like this?
-	if fmt.Sprintf("\"%s\"", setValue) != getValue {
+	if setValue != getValue {
 		t.Fatal(errors.New(fmt.Sprintf("incorrect value retrieved after set: %s", getValue)))
 	}
 }

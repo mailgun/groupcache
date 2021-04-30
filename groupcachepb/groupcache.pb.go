@@ -31,7 +31,7 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 type GetRequest struct {
 	Group            *string `protobuf:"bytes,1,req,name=group" json:"group,omitempty"`
 	Key              *string `protobuf:"bytes,2,req,name=key" json:"key,omitempty"`
-	Value            interface{}
+	Value            []byte
 	XXX_unrecognized []byte  `json:"-"`
 }
 

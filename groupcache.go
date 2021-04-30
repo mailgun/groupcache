@@ -26,7 +26,6 @@ package groupcache
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"sync"
@@ -259,7 +258,7 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
-func (g *Group) Set(ctx context.Context, key string, value interface{}) error {
+func (g *Group) Set(ctx context.Context, key string, value []byte) error {
 	g.peersOnce.Do(g.initPeers)
 
 	_, err := g.setGroup.Do(key, func() (interface{}, error) {
@@ -478,7 +477,7 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	return value, nil
 }
 
-func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, key string, value interface{}) error {
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, key string, value []byte) error {
 	req := &pb.GetRequest{
 		Group: &g.name,
 		Key:   &key,
@@ -507,18 +506,13 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	return
 }
 
-func (g *Group) localSet(key string, value interface{}) {
+func (g *Group) localSet(key string, value []byte) {
 	if g.cacheBytes <= 0 {
 		return
 	}
 
-	buf, err := json.Marshal(value)
-	if err != nil {
-		return
-	}
-
 	bv := ByteView{
-		b: buf,
+		b: value,
 		e: time.Time{},
 	}
 
