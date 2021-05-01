@@ -116,7 +116,7 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		peers:       peers,
 		cacheBytes:  cacheBytes,
 		loadGroup:   &singleflight.Group{},
-		setGroup:   &singleflight.Group{},
+		setGroup:    &singleflight.Group{},
 		removeGroup: &singleflight.Group{},
 	}
 	if fn := newGroupHook; fn != nil {
@@ -258,49 +258,30 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
-func (g *Group) Set(ctx context.Context, key string, value []byte) error {
+func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) error {
 	g.peersOnce.Do(g.initPeers)
 
-	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+	if key == "" {
+		return errors.New("empty Set() key not allowed")
+	}
 
-		// Set to key owner first
+	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
-			if err := g.setFromPeer(ctx, owner, key, value); err != nil {
+			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
 				return nil, err
 			}
-		}
-		// Set to our cache next
-		g.localSet(key, value)
-		wg := sync.WaitGroup{}
-		errs := make(chan error)
-
-		// Asynchronously add the key and value to all hot and main caches of peers
-		for _, peer := range g.peers.GetAll() {
-			// avoid adding to owner a second time
-			if peer == owner {
-				continue
+			// TODO(thrawn01): Not sure if this is useful outside of tests...
+			//  maybe we should ALWAYS update the local cache?
+			if hotCache {
+				g.localSet(key, value, expire, &g.hotCache)
 			}
-
-			wg.Add(1)
-			go func(peer ProtoGetter) {
-				errs <- g.setFromPeer(ctx, peer, key, value)
-				wg.Done()
-			}(peer)
+			return nil, nil
 		}
-		go func() {
-			wg.Wait()
-			close(errs)
-		}()
-
-		// TODO(thrawn01): Should we report all errors? Reporting context
-		//  cancelled error for each peer doesn't make much sense.
-		var err error
-		for e := range errs {
-			err = e
-		}
-
-		return nil, err
+		// We own this key
+		g.localSet(key, value, expire, &g.mainCache)
+		return nil, nil
 	})
 	return err
 }
@@ -477,11 +458,16 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	return value, nil
 }
 
-func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, key string, value []byte) error {
-	req := &pb.GetRequest{
-		Group: &g.name,
-		Key:   &key,
-		Value: value,
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time) error {
+	var expire int64
+	if !e.IsZero() {
+		expire = e.UnixNano()
+	}
+	req := &pb.SetRequest{
+		Expire: &expire,
+		Group:  &g.name,
+		Key:    &k,
+		Value:  v,
 	}
 	return peer.Set(ctx, req)
 }
@@ -506,19 +492,19 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	return
 }
 
-func (g *Group) localSet(key string, value []byte) {
+func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cache) {
 	if g.cacheBytes <= 0 {
 		return
 	}
 
 	bv := ByteView{
 		b: value,
-		e: time.Time{},
+		e: expire,
 	}
 
+	// Ensure no requests are in flight
 	g.loadGroup.Lock(func() {
-		g.hotCache.set(key, bv)
-		g.mainCache.set(key, bv)
+		g.populateCache(key, bv, cache)
 	})
 }
 
@@ -638,15 +624,6 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	}
 	c.nhit++
 	return vi.(ByteView), true
-}
-
-func (c *cache) set(key string, value ByteView) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.lru == nil {
-		return
-	}
-	c.lru.Add(key, value, time.Now().Add(60*time.Minute)) // TODO: parameterize this
 }
 
 func (c *cache) remove(key string) {

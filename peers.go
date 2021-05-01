@@ -28,7 +28,7 @@ import (
 type ProtoGetter interface {
 	Get(context context.Context, in *pb.GetRequest, out *pb.GetResponse) error
 	Remove(context context.Context, in *pb.GetRequest) error
-	Set(context context.Context, in *pb.GetRequest) error
+	Set(context context.Context, in *pb.SetRequest) error
 	// GetURL returns the peer URL
 	GetURL() string
 }
