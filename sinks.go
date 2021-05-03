@@ -170,7 +170,6 @@ func ProtoSink(m proto.Message) Sink {
 type protoSink struct {
 	dst proto.Message // authoritative value
 	typ string
-	ttl time.Duration
 
 	v ByteView // encoded
 }

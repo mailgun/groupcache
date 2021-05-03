@@ -29,6 +29,13 @@ message GetResponse {
   optional int64 expire = 3;
 }
 
+message SetRequest {
+  required string group = 1;
+  required string key = 2;
+  optional bytes value = 3;
+  optional int64 expire = 4;
+}
+
 service GroupCache {
   rpc Get(GetRequest) returns (GetResponse) {
   };

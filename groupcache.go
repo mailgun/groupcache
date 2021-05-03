@@ -116,6 +116,7 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		peers:       peers,
 		cacheBytes:  cacheBytes,
 		loadGroup:   &singleflight.Group{},
+		setGroup:    &singleflight.Group{},
 		removeGroup: &singleflight.Group{},
 	}
 	if fn := newGroupHook; fn != nil {
@@ -181,6 +182,10 @@ type Group struct {
 	// (either locally or remotely), regardless of the number of
 	// concurrent callers.
 	loadGroup flightGroup
+
+	// setGroup ensures that each added key is only added
+	// remotely once regardless of the number of concurrent callers.
+	setGroup flightGroup
 
 	// removeGroup ensures that each removed key is only removed
 	// remotely once regardless of the number of concurrent callers.
@@ -251,6 +256,34 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 		return nil
 	}
 	return setSinkView(dest, value)
+}
+
+func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) error {
+	g.peersOnce.Do(g.initPeers)
+
+	if key == "" {
+		return errors.New("empty Set() key not allowed")
+	}
+
+	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+		// If remote peer owns this key
+		owner, ok := g.peers.PickPeer(key)
+		if ok {
+			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
+				return nil, err
+			}
+			// TODO(thrawn01): Not sure if this is useful outside of tests...
+			//  maybe we should ALWAYS update the local cache?
+			if hotCache {
+				g.localSet(key, value, expire, &g.hotCache)
+			}
+			return nil, nil
+		}
+		// We own this key
+		g.localSet(key, value, expire, &g.mainCache)
+		return nil, nil
+	})
+	return err
 }
 
 // Remove clears the key from our cache then forwards the remove
@@ -425,6 +458,20 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	return value, nil
 }
 
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time) error {
+	var expire int64
+	if !e.IsZero() {
+		expire = e.UnixNano()
+	}
+	req := &pb.SetRequest{
+		Expire: &expire,
+		Group:  &g.name,
+		Key:    &k,
+		Value:  v,
+	}
+	return peer.Set(ctx, req)
+}
+
 func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string) error {
 	req := &pb.GetRequest{
 		Group: &g.name,
@@ -443,6 +490,22 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	}
 	value, ok = g.hotCache.get(key)
 	return
+}
+
+func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cache) {
+	if g.cacheBytes <= 0 {
+		return
+	}
+
+	bv := ByteView{
+		b: value,
+		e: expire,
+	}
+
+	// Ensure no requests are in flight
+	g.loadGroup.Lock(func() {
+		g.populateCache(key, bv, cache)
+	})
 }
 
 func (g *Group) localRemove(key string) {
