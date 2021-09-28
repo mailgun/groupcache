@@ -90,14 +90,14 @@ import (
 )
 
 func ExampleUsage() {
-    // Keep track of peers in our cluster and add our instance to the pool `http://localhost:8080`
-    pool := groupcache.NewHTTPPoolOpts("http://localhost:8080", &groupcache.HTTPPoolOptions{})
+    // Keep track of peers in our cluster and add our instance to the pool `http://192.168.1.1:8080`
+    pool := groupcache.NewHTTPPoolOpts("http://192.168.1.1:8080", &groupcache.HTTPPoolOptions{})
 
-    // Add more peers to the cluster
-    pool.Set("http://peer1:8080", "http://peer2:8080")
+    // Add more peers to the cluster (Ensure our instance is included)
+    pool.Set("http://192.168.1.1:8080", "http://192.168.1.2:8080", "http://192.168.1.3:8080")
 
     server := http.Server{
-        Addr:    "localhost:8080",
+        Addr:    "192.168.1.1:8080",
         Handler: pool,
     }
 
