@@ -274,7 +274,7 @@ func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io
 		url.QueryEscape(in.GetGroup()),
 		url.QueryEscape(in.GetKey()),
 	)
-	req, err := http.NewRequestWithContext(ctx, m, u, nil)
+	req, err := http.NewRequestWithContext(ctx, m, u, b)
 	if err != nil {
 		return err
 	}
