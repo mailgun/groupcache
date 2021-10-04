@@ -274,14 +274,10 @@ func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io
 		url.QueryEscape(in.GetGroup()),
 		url.QueryEscape(in.GetKey()),
 	)
-
-	req, err := http.NewRequest(m, u, b)
+	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return err
 	}
-
-	// Pass along the context to the RoundTripper
-	req = req.WithContext(ctx)
 
 	tr := http.DefaultTransport
 	if h.getTransport != nil {
