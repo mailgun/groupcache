@@ -17,6 +17,7 @@ limitations under the License.
 package groupcache
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -75,6 +76,7 @@ func TestHTTPPool(t *testing.T) {
 			"--test_server_addr="+ts.URL,
 		)
 		cmds = append(cmds, cmd)
+		cmd.Stdout = os.Stdout
 		wg.Add(1)
 		if err := cmd.Start(); err != nil {
 			t.Fatal("failed to start child process: ", err)
@@ -150,6 +152,27 @@ func TestHTTPPool(t *testing.T) {
 	// Should register another server get
 	if serverHits != 2 {
 		t.Error("expected serverHits to be '2'")
+	}
+
+	key = "setMyTestKey"
+	setValue := []byte("test set")
+	// Add the key to the cache, optionally updating our local hot cache
+	if err := g.Set(ctx, key, setValue, time.Time{}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the key
+	var getValue ByteView
+	if err := g.Get(ctx, key, ByteViewSink(&getValue)); err != nil {
+		t.Fatal(err)
+	}
+
+	if serverHits != 2 {
+		t.Errorf("expected serverHits to be '3' got '%d'", serverHits)
+	}
+
+	if !bytes.Equal(setValue, getValue.ByteSlice()) {
+		t.Fatal(errors.New(fmt.Sprintf("incorrect value retrieved after set: %s", getValue)))
 	}
 }
 

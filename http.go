@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/mailgun/groupcache/v2/consistenthash"
@@ -191,6 +192,34 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The read the body and set the key value
+	if r.Method == http.MethodPut {
+		defer r.Body.Close()
+		b := bufferPool.Get().(*bytes.Buffer)
+		b.Reset()
+		defer bufferPool.Put(b)
+		_, err := io.Copy(b, r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var out pb.SetRequest
+		err = proto.Unmarshal(b.Bytes(), &out)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var expire time.Time
+		if out.Expire != nil && *out.Expire != 0 {
+			expire = time.Unix(*out.Expire/int64(time.Second), *out.Expire%int64(time.Second))
+		}
+
+		group.localSet(*out.Key, out.Value, expire, &group.mainCache)
+		return
+	}
+
 	var b []byte
 
 	value := AllocatingByteSliceSink(&b)
@@ -225,7 +254,6 @@ type httpGetter struct {
 	baseURL      string
 }
 
-// GetURL
 func (p *httpGetter) GetURL() string {
 	return p.baseURL
 }
@@ -234,14 +262,19 @@ var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetRequest, out *http.Response) error {
+type request interface {
+	GetGroup() string
+	GetKey() string
+}
+
+func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io.Reader, out *http.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
 		url.QueryEscape(in.GetGroup()),
 		url.QueryEscape(in.GetKey()),
 	)
-	req, err := http.NewRequestWithContext(ctx, method, u, nil)
+	req, err := http.NewRequestWithContext(ctx, m, u, b)
 	if err != nil {
 		return err
 	}
@@ -261,7 +294,7 @@ func (h *httpGetter) makeRequest(ctx context.Context, method string, in *pb.GetR
 
 func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	var res http.Response
-	if err := h.makeRequest(ctx, http.MethodGet, in, &res); err != nil {
+	if err := h.makeRequest(ctx, http.MethodGet, in, nil, &res); err != nil {
 		return err
 	}
 	defer res.Body.Close()
@@ -282,9 +315,30 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	return nil
 }
 
+func (h *httpGetter) Set(ctx context.Context, in *pb.SetRequest) error {
+	body, err := proto.Marshal(in)
+	if err != nil {
+		return fmt.Errorf("while marshaling SetRequest body: %w", err)
+	}
+	var res http.Response
+	if err := h.makeRequest(ctx, http.MethodPut, in, bytes.NewReader(body), &res); err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("while reading body response: %v", res.Status)
+		}
+		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
+	}
+	return nil
+}
+
 func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
 	var res http.Response
-	if err := h.makeRequest(ctx, http.MethodDelete, in, &res); err != nil {
+	if err := h.makeRequest(ctx, http.MethodDelete, in, nil, &res); err != nil {
 		return err
 	}
 	defer res.Body.Close()
