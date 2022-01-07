@@ -188,7 +188,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Delete the key and return 200
 	if r.Method == http.MethodDelete {
-		group.localRemove(key)
+		group.LocalRemove(key)
 		return
 	}
 

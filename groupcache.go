@@ -301,7 +301,7 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 			}
 		}
 		// Remove from our cache next
-		g.localRemove(key)
+		g.LocalRemove(key)
 		wg := sync.WaitGroup{}
 		errs := make(chan error)
 
@@ -508,7 +508,9 @@ func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cach
 	})
 }
 
-func (g *Group) localRemove(key string) {
+// LocalRemove key from the local cache
+// This method is only intended to be used by groupcache.ProtoGetter implementors
+func (g *Group) LocalRemove(key string) {
 	// Clear key from our local cache
 	if g.cacheBytes <= 0 {
 		return
