@@ -73,6 +73,11 @@ type HTTPPoolOptions struct {
 	// receives a request.
 	// If nil, uses the http.Request.Context()
 	Context func(*http.Request) context.Context
+
+	// UpdateRequest optionally specifies a function that takes in the
+	// outgoing http request and returns either the same request or a
+	// new http request.
+	UpdateRequest func(*http.Request) *http.Request
 }
 
 // NewHTTPPool initializes an HTTP pool of peers, and registers itself as a PeerPicker.
@@ -126,8 +131,9 @@ func (p *HTTPPool) Set(peers ...string) {
 	p.httpGetters = make(map[string]*httpGetter, len(peers))
 	for _, peer := range peers {
 		p.httpGetters[peer] = &httpGetter{
-			getTransport: p.opts.Transport,
-			baseURL:      peer + p.opts.BasePath,
+			getTransport:     p.opts.Transport,
+			getUpdateRequest: p.opts.UpdateRequest,
+			baseURL:          peer + p.opts.BasePath,
 		}
 	}
 }
@@ -250,8 +256,9 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type httpGetter struct {
-	getTransport func(context.Context) http.RoundTripper
-	baseURL      string
+	getTransport     func(context.Context) http.RoundTripper
+	getUpdateRequest func(*http.Request) *http.Request
+	baseURL          string
 }
 
 func (p *httpGetter) GetURL() string {
@@ -277,6 +284,10 @@ func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io
 	req, err := http.NewRequestWithContext(ctx, m, u, b)
 	if err != nil {
 		return err
+	}
+
+	if h.getUpdateRequest != nil {
+		req = h.getUpdateRequest(req)
 	}
 
 	tr := http.DefaultTransport

@@ -172,7 +172,7 @@ func TestHTTPPool(t *testing.T) {
 	}
 
 	if !bytes.Equal(setValue, getValue.ByteSlice()) {
-		t.Fatal(errors.New(fmt.Sprintf("incorrect value retrieved after set: %s", getValue)))
+		t.Fatal(fmt.Errorf("incorrect value retrieved after set: %s", getValue))
 	}
 }
 
