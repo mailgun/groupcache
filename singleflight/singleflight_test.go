@@ -19,6 +19,7 @@ package singleflight
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -78,6 +79,71 @@ func TestDoDupSuppress(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond) // let goroutines above block
 	c <- "bar"
+	wg.Wait()
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("number of calls = %d; want 1", got)
+	}
+}
+
+func TestDoPanic(t *testing.T) {
+	var g Group
+	var err error
+	func() {
+		defer func() {
+			// do not let the panic below leak to the test
+			_ = recover()
+		}()
+		_, err = g.Do("key", func() (interface{}, error) {
+			panic("something went horribly wrong")
+		})
+	}()
+	if err != nil {
+		t.Errorf("Do error = %v; want someErr", err)
+	}
+	// ensure subsequent calls to same key still work
+	v, err := g.Do("key", func() (interface{}, error) {
+		return "foo", nil
+	})
+	if err != nil {
+		t.Errorf("Do error = %v; want no error", err)
+	}
+	if v.(string) != "foo" {
+		t.Errorf("got %q; want %q", v, "foo")
+	}
+}
+
+func TestDoConcurrentPanic(t *testing.T) {
+	var g Group
+	c := make(chan struct{})
+	var calls int32
+	fn := func() (interface{}, error) {
+		atomic.AddInt32(&calls, 1)
+		<-c
+		panic("something went horribly wrong")
+	}
+
+	const n = 10
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer func() {
+				// do not let the panic leak to the test
+				_ = recover()
+				wg.Done()
+			}()
+
+			v, err := g.Do("key", fn)
+			if err == nil || !strings.Contains(err.Error(), "singleflight leader panicked") {
+				t.Errorf("Do error: %v; wanted 'singleflight panicked'", err)
+			}
+			if v != nil {
+				t.Errorf("got %q; want nil", v)
+			}
+		}()
+	}
+	time.Sleep(100 * time.Millisecond) // let goroutines above block
+	c <- struct{}{}
 	wg.Wait()
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Errorf("number of calls = %d; want 1", got)
