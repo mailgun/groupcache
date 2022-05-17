@@ -122,15 +122,13 @@ func ExampleUsage() {
         func(ctx context.Context, id string, dest groupcache.Sink) error {
 
             // Returns a protobuf struct `User`
-            if user, err := fetchUserFromMongo(ctx, id); err != nil {
+            user, err := fetchUserFromMongo(ctx, id)
+            if err != nil {
                 return err
             }
 
             // Set the user in the groupcache to expire after 5 minutes
-            if err := dest.SetProto(&user, time.Now().Add(time.Minute*5)); err != nil {
-                return err
-            }
-            return nil
+            return dest.SetProto(&user, time.Now().Add(time.Minute*5))
         },
     ))
 
