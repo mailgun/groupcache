@@ -386,6 +386,9 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			if err == nil {
 				g.Stats.PeerLoads.Add(1)
 				return value, nil
+			} else if errors.Is(err, context.Canceled) {
+				// do not count context cancellation as a peer error
+				return nil, err
 			}
 
 			if logger != nil {
