@@ -1,5 +1,5 @@
 language: go
-go_import_path: github.com/mailgun/groupcache
+go_import_path: github.com/tunein/streaming-groupcache
 
 os: linux
 dist: xenial

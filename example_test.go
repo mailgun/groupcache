@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/mailgun/groupcache/v2"
+	"github.com/tunein/streaming-groupcache/v2"
 )
 
 func ExampleUsage() {
