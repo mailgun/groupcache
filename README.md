@@ -25,11 +25,12 @@ For API docs and examples, see http://godoc.org/github.com/mailgun/groupcache
   cluster eventually becomes consistent again.
 
 * Support for expired values. `SetBytes()`, `SetProto()` and `SetString()` now
-  accept an optional `time.Time{}` which represents a time in the future when the
-  value will expire. Expiration is handled by the LRU Cache when a `Get()` on a 
-  key is requested. This means no network coordination of expired values is needed.
-  However this does require that time on all nodes in the cluster is synchronized 
-  for consistent expiration of values.
+  accept an optional `time.Time` which represents a time in the future when the
+  value will expire. If you don't want expiration, pass the zero value for
+  `time.Time` (for instance, `time.Time{}`). Expiration is handled by the LRU Cache
+  when a `Get()` on a key is requested. This means no network coordination of
+  expired values is needed. However this does require that time on all nodes in the
+  cluster is synchronized for consistent expiration of values.
 
 * Now always populating the hotcache. A more complex algorithm is unnecessary
   when the LRU cache will ensure the most used values remain in the cache. The
