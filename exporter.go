@@ -4,8 +4,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const subsystem = "groupcache"
-
 type Exporter struct {
 	groups []GroupStatistics
 
@@ -63,92 +61,92 @@ type GroupStatistics interface {
 	HotCacheEvictions() int64
 }
 
-func NewExporter(namespace string, groups ...GroupStatistics) *Exporter {
+func NewExporter(labels map[string]string, groups ...GroupStatistics) *Exporter {
 	return &Exporter{
 		groups: groups,
 		groupGets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
+			"gets_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupCacheHits: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "hits_total"),
+			"hits_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupPeerLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "peer_loads_total"),
+			"peer_loads_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupPeerErrors: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "peer_errors_total"),
+			"peer_errors_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "loads_total"),
+			"loads_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupLoadsDeduped: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "loads_deduped_total"),
+			"loads_deduped_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupLocalLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "local_load_total"),
+			"local_load_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupLocalLoadErrs: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "local_load_errs_total"),
+			"local_load_errs_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		groupServerRequests: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "server_requests_total"),
+			"server_requests_total",
 			"todo",
 			[]string{"group"},
-			nil,
+			labels,
 		),
 		cacheBytes: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_bytes"),
+			"cache_bytes",
 			"todo",
 			[]string{"group", "type"},
-			nil,
+			labels,
 		),
 		cacheItems: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_items"),
+			"cache_items",
 			"todo",
 			[]string{"group", "type"},
-			nil,
+			labels,
 		),
 		cacheGets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_gets_total"),
+			"cache_gets_total",
 			"todo",
 			[]string{"group", "type"},
-			nil,
+			labels,
 		),
 		cacheHits: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_hits_total"),
+			"cache_hits_total",
 			"todo",
 			[]string{"group", "type"},
-			nil,
+			labels,
 		),
 		cacheEvictions: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_total"),
+			"cache_evictions_total",
 			"todo",
 			[]string{"group", "type"},
-			nil,
+			labels,
 		),
 	}
 }
