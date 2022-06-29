@@ -1,4 +1,4 @@
-package gcexporter
+package groupcache_exporter
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
