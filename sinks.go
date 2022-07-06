@@ -33,6 +33,10 @@ var _ Sink = &byteViewSink{}
 //
 // Implementation of Getter must call exactly one of the Set methods
 // on success.
+//
+// `e` sets an optional time in the future when the value will expire.
+// If you don't want expiration, pass the zero value for
+// `time.Time` (for instance, `time.Time{}`).
 type Sink interface {
 	// SetString sets the value to s.
 	SetString(s string, e time.Time) error
