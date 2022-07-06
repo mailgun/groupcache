@@ -38,9 +38,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var logger *logrus.Entry
+var logger Logger
 
+// SetLogger - this is legacy to provide backwards compatibility with logrus.
 func SetLogger(log *logrus.Entry) {
+	logger = LogrusLogger{Entry: log}
+}
+
+// SetLoggerFromLogger - set the logger to an implementation of the Logger interface
+func SetLoggerFromLogger(log Logger) {
 	logger = log
 }
 
@@ -392,11 +398,12 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			}
 
 			if logger != nil {
-				logger.WithFields(logrus.Fields{
-					"err":      err,
-					"key":      key,
-					"category": "groupcache",
-				}).Errorf("error retrieving key from peer '%s'", peer.GetURL())
+				logger.Error().
+					WithFields(map[string]interface{}{
+						"err":      err,
+						"key":      key,
+						"category": "groupcache",
+					}).Printf("error retrieving key from peer '%s'", peer.GetURL())
 			}
 
 			g.Stats.PeerErrors.Add(1)
