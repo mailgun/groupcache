@@ -299,7 +299,8 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("server returned: %v", res.Status)
+		msg, _ := ioutil.ReadAll(io.LimitReader(res.Body, 10*1024*1024)) // Limit reading the error body to max 10 MiB
+		return fmt.Errorf("server returned: %v, %v", res.Status, msg)
 	}
 	b := bufferPool.Get().(*bytes.Buffer)
 	b.Reset()
