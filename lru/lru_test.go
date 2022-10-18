@@ -121,3 +121,47 @@ func TestExpire(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdateExpire(t *testing.T) {
+	var tests = []struct {
+		name    string
+		key     interface{}
+		expects []bool
+		expires []time.Duration
+		waits   []time.Duration
+	}{
+		{
+			"not-expired",
+			"myKey",
+			[]bool{true, true},
+			[]time.Duration{time.Millisecond * 100, time.Millisecond * 100},
+			[]time.Duration{time.Millisecond * 75, time.Millisecond * 75},
+		},
+		{
+			"expired",
+			"expiredKey",
+			[]bool{true, false},
+			[]time.Duration{time.Millisecond * 100, time.Millisecond * 50},
+			[]time.Duration{time.Millisecond * 75, time.Millisecond * 100},
+		},
+	}
+
+	for _, tt := range tests {
+		lru := New(0)
+
+		for i, v := range tt.expects {
+			expectedOk := v
+			expire := tt.expires[i]
+			wait := tt.waits[i]
+
+			lru.Add(tt.key, 1234, time.Now().Add(expire))
+			time.Sleep(wait)
+			val, ok := lru.Get(tt.key)
+			if ok != expectedOk {
+				t.Fatalf("%s[%d]: cache hit = %v; want %v", tt.name, i, ok, !ok)
+			} else if ok && val != 1234 {
+				t.Fatalf("%s[%d] expected get to return 1234 but got %v", tt.name, i, val)
+			}
+		}
+	}
+}
