@@ -64,7 +64,11 @@ func (c *Cache) Add(key Key, value interface{}, expire time.Time) {
 	}
 	if ee, ok := c.cache[key]; ok {
 		c.ll.MoveToFront(ee)
-		ee.Value.(*entry).value = value
+		entry := ee.Value.(*entry)
+		entry.value = value
+		if !expire.IsZero() && expire.After(time.Now()) {
+			entry.expire = expire
+		}
 		return
 	}
 	ele := c.ll.PushFront(&entry{key, value, expire})
