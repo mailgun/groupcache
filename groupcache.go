@@ -591,17 +591,19 @@ type cache struct {
 	lru        *lru.Cache
 	nhit, nget int64
 	nevict     int64 // number of evictions
+	nreplace   int64 // number of replacements
 }
 
 func (c *cache) stats() CacheStats {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return CacheStats{
-		Bytes:     c.nbytes,
-		Items:     c.itemsLocked(),
-		Gets:      c.nget,
-		Hits:      c.nhit,
-		Evictions: c.nevict,
+		Bytes:        c.nbytes,
+		Items:        c.itemsLocked(),
+		Gets:         c.nget,
+		Hits:         c.nhit,
+		Evictions:    c.nevict,
+		Replacements: c.nreplace,
 	}
 }
 
@@ -611,14 +613,21 @@ func (c *cache) add(key string, value ByteView) {
 	if c.lru == nil {
 		c.lru = &lru.Cache{
 			OnEvicted: func(key lru.Key, value interface{}) {
-				val := value.(ByteView)
-				c.nbytes -= int64(len(key.(string))) + int64(val.Len())
+				c.nbytes -= getItemSize(key.(string), value.(ByteView))
 				c.nevict++
+			},
+			OnReplace: func(key lru.Key, value interface{}, expire time.Time) {
+				c.nbytes -= getItemSize(key.(string), value.(ByteView))
+				c.nreplace++
 			},
 		}
 	}
 	c.lru.Add(key, value, value.Expire())
-	c.nbytes += int64(len(key)) + int64(value.Len())
+	c.nbytes += getItemSize(key, value)
+}
+
+func getItemSize(key string, value ByteView) int64 {
+	return int64(len(key)) + int64(value.Len())
 }
 
 func (c *cache) get(key string) (value ByteView, ok bool) {
@@ -696,9 +705,10 @@ func (i *AtomicInt) String() string {
 
 // CacheStats are returned by stats accessors on Group.
 type CacheStats struct {
-	Bytes     int64
-	Items     int64
-	Gets      int64
-	Hits      int64
-	Evictions int64
+	Bytes        int64
+	Items        int64
+	Gets         int64
+	Hits         int64
+	Evictions    int64
+	Replacements int64
 }

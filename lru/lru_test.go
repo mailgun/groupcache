@@ -121,3 +121,23 @@ func TestExpire(t *testing.T) {
 		}
 	}
 }
+
+func TestReplacement(t *testing.T) {
+	replacedKeys := make([]Key, 0)
+	onReplacementFunc := func(key Key, value interface{}, expire time.Time) {
+		replacedKeys = append(replacedKeys, key)
+	}
+
+	lru := New(2)
+	lru.OnReplace = onReplacementFunc
+	for i := 0; i < 3; i++ {
+		lru.Add(fmt.Sprintf("myKey%d", i%2), 1234, time.Time{})
+	}
+
+	if len(replacedKeys) != 1 {
+		t.Fatalf("got %d evicted keys; want 1", len(replacedKeys))
+	}
+	if replacedKeys[0] != Key("myKey0") {
+		t.Fatalf("got %v in first evicted key; want %s", replacedKeys[0], "myKey0")
+	}
+}

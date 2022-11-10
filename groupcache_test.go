@@ -535,3 +535,35 @@ func TestContextDeadlineOnPeer(t *testing.T) {
 		}
 	}
 }
+
+func TestCacheUpdateValue(t *testing.T) {
+	c := &cache{}
+	myKey := "myKey"
+	bw1 := ByteView{s: "myFirstValue", e: time.Now().Add(100 * time.Second)}
+	expectedSize := getItemSize(myKey, bw1)
+	c.add(myKey, bw1)
+	v, ok := c.get(myKey)
+	if !ok {
+		t.Error("Key not found after adding")
+	}
+	if !v.Equal(bw1) {
+		t.Error("Added key differs from got")
+	}
+	if c.bytes() != expectedSize {
+		t.Errorf("Invalid buffer size: %d, must be %d", c.bytes(), expectedSize)
+	}
+
+	bw2 := ByteView{s: "mySecondValue", e: time.Now().Add(100 * time.Second)}
+	expectedSize = expectedSize - getItemSize(myKey, bw1) + getItemSize(myKey, bw2)
+	c.add(myKey, bw2)
+	v, ok = c.get(myKey)
+	if !ok {
+		t.Error("Key not found after second adding")
+	}
+	if !v.Equal(bw2) {
+		t.Error("Added key differs from got")
+	}
+	if c.bytes() != expectedSize {
+		t.Errorf("Invalid buffer size: %d, must be %d", c.bytes(), expectedSize)
+	}
+}
