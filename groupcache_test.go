@@ -553,7 +553,7 @@ func TestCacheUpdateValue(t *testing.T) {
 		t.Errorf("Invalid buffer size: %d, must be %d", c.bytes(), expectedSize)
 	}
 
-	bw2 := ByteView{s: "mySecondValue", e: time.Now().Add(100 * time.Second)}
+	bw2 := ByteView{s: "mySecondValue", e: time.Now().Add(200 * time.Second)}
 	expectedSize = expectedSize - getItemSize(myKey, bw1) + getItemSize(myKey, bw2)
 	c.add(myKey, bw2)
 	v, ok = c.get(myKey)
