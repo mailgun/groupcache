@@ -535,3 +535,18 @@ func TestContextDeadlineOnPeer(t *testing.T) {
 		}
 	}
 }
+
+func TestCacheRemovesBytesOfReplacedValues(t *testing.T) {
+	c := cache{}
+
+	const key = "test"
+	keyLen := len(key)
+
+	for _, bytes := range []int{100, 1000, 2000} {
+		c.add(key, ByteView{b: make([]byte, bytes)})
+		expected := int64(bytes + keyLen)
+		if c.nbytes != expected {
+			t.Fatalf("%s: expected %d was %d", t.Name(), expected, c.nbytes)
+		}
+	}
+}
