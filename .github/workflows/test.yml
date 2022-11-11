@@ -1,0 +1,26 @@
+name: CI
+on:
+  workflow_call:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.18", "1.19"]
+        include:
+          - go-version: "1.19"
+            latest: true
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup Go ${{matrix.go-version}}
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{matrix.go-version}}
+      - name: Fetch dependencies
+        run: go mod download
+      - if: ${{ !matrix.latest }}
+        name: Unit Tests
+        run: |
+          go test -race -count=1 ./...
