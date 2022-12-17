@@ -12,12 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.3.0] - 2022-01-06
 ### Added
-* Added Group.Set() to allow users to explicity set values in the cache.
+* Added Group.Set() to allow users to explicitly set values in the cache.
 
 ## [2.2.1] - 2021-01-13
 ### Changes
 * Now uses the much faster fnv1
-* Now md5 hashs the keys to help distribute hosts more evenly in some
+* Now md5 hashes the keys to help distribute hosts more evenly in some
   cases.
 
 ## [2.2.0] - 2019-07-09

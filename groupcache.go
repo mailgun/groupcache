@@ -298,7 +298,6 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 	g.peersOnce.Do(g.initPeers)
 
 	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
-
 		// Remove from key owner first
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
@@ -321,6 +320,41 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 			wg.Add(1)
 			go func(peer ProtoGetter) {
 				errs <- g.removeFromPeer(ctx, peer, key)
+				wg.Done()
+			}(peer)
+		}
+		go func() {
+			wg.Wait()
+			close(errs)
+		}()
+
+		// TODO(thrawn01): Should we report all errors? Reporting context
+		//  cancelled error for each peer doesn't make much sense.
+		var err error
+		for e := range errs {
+			err = e
+		}
+
+		return nil, err
+	})
+	return err
+}
+
+// Clear purges our cache then forwards the clear request to all peers.
+func (g *Group) Clear(ctx context.Context) error {
+	g.peersOnce.Do(g.initPeers)
+
+	_, err := g.removeGroup.Do("", func() (interface{}, error) {
+		// Clear our cache first
+		g.localClear()
+		wg := sync.WaitGroup{}
+		errs := make(chan error)
+
+		// Asynchronously clear all caches of peers
+		for _, peer := range g.peers.GetAll() {
+			wg.Add(1)
+			go func(peer ProtoGetter) {
+				errs <- g.clearFromPeer(ctx, peer)
 				wg.Done()
 			}(peer)
 		}
@@ -490,6 +524,13 @@ func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string
 	return peer.Remove(ctx, req)
 }
 
+func (g *Group) clearFromPeer(ctx context.Context, peer ProtoGetter) error {
+	req := &pb.GetRequest{
+		Group: &g.name,
+	}
+	return peer.Clear(ctx, req)
+}
+
 func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	if g.cacheBytes <= 0 {
 		return
@@ -528,6 +569,19 @@ func (g *Group) localRemove(key string) {
 	g.loadGroup.Lock(func() {
 		g.hotCache.remove(key)
 		g.mainCache.remove(key)
+	})
+}
+
+func (g *Group) localClear() {
+	// Clear our local cache
+	if g.cacheBytes <= 0 {
+		return
+	}
+
+	// Ensure no requests are in flight
+	g.loadGroup.Lock(func() {
+		g.hotCache.clear()
+		g.mainCache.clear()
 	})
 }
 
@@ -649,6 +703,15 @@ func (c *cache) remove(key string) {
 		return
 	}
 	c.lru.Remove(key)
+}
+
+func (c *cache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.lru == nil {
+		return
+	}
+	c.lru.Clear()
 }
 
 func (c *cache) removeOldest() {

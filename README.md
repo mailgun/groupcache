@@ -156,4 +156,7 @@ func ExampleUsage() {
 
 ```
 ### Note
-The call to `groupcache.NewHTTPPoolOpts()` is a bit misleading. `NewHTTPPoolOpts()` creates a new pool internally within the `groupcache` package where it is uitilized by any groups created. The `pool` returned is only a pointer to the internallly registered pool so the caller can update the peers in the pool as needed.
+The call to `groupcache.NewHTTPPoolOpts()` is a bit misleading. `NewHTTPPoolOpts()`
+creates a new pool internally within the `groupcache` package where it is utilized
+by any groups created. The `pool` returned is only a pointer to the internally
+registered pool so the caller can update the peers in the pool as needed.

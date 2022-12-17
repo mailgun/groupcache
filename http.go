@@ -164,12 +164,13 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		panic("HTTPPool serving unexpected path: " + r.URL.Path)
 	}
 	parts := strings.SplitN(r.URL.Path[len(p.opts.BasePath):], "/", 2)
-	if len(parts) != 2 {
+	lenParts := len(parts)
+
+	if (lenParts != 2) || ((lenParts == 1) && (r.Method != http.MethodDelete)) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 	groupName := parts[0]
-	key := parts[1]
 
 	// Fetch the value for this group/key.
 	group := GetGroup(groupName)
@@ -185,6 +186,13 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group.Stats.ServerRequests.Add(1)
+
+	if (lenParts == 1) && (r.Method == http.MethodDelete) {
+		group.localRemove("")
+		return
+	}
+
+	key := parts[1]
 
 	// Delete the key and return 200
 	if r.Method == http.MethodDelete {
@@ -268,12 +276,21 @@ type request interface {
 }
 
 func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io.Reader, out *http.Response) error {
-	u := fmt.Sprintf(
-		"%v%v/%v",
-		h.baseURL,
-		url.PathEscape(in.GetGroup()),
-		url.PathEscape(in.GetKey()),
-	)
+	var u string
+	if key := in.GetKey(); key != "" {
+		u = fmt.Sprintf(
+			"%v%v/%v",
+			h.baseURL,
+			url.PathEscape(in.GetGroup()),
+			url.PathEscape(key),
+		)
+	} else {
+		u = fmt.Sprintf(
+			"%v%v",
+			h.baseURL,
+			url.PathEscape(in.GetGroup()),
+		)
+	}
 	req, err := http.NewRequestWithContext(ctx, m, u, b)
 	if err != nil {
 		return err
@@ -338,6 +355,23 @@ func (h *httpGetter) Set(ctx context.Context, in *pb.SetRequest) error {
 }
 
 func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
+	var res http.Response
+	if err := h.makeRequest(ctx, http.MethodDelete, in, nil, &res); err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		body, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return fmt.Errorf("while reading body response: %v", res.Status)
+		}
+		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
+	}
+	return nil
+}
+
+func (h *httpGetter) Clear(ctx context.Context, in *pb.GetRequest) error {
 	var res http.Response
 	if err := h.makeRequest(ctx, http.MethodDelete, in, nil, &res); err != nil {
 		return err

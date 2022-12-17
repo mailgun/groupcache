@@ -29,6 +29,7 @@ type ProtoGetter interface {
 	Get(context context.Context, in *pb.GetRequest, out *pb.GetResponse) error
 	Remove(context context.Context, in *pb.GetRequest) error
 	Set(context context.Context, in *pb.SetRequest) error
+	Clear(context context.Context, in *pb.GetRequest) error
 	// GetURL returns the peer URL
 	GetURL() string
 }
@@ -50,9 +51,7 @@ type NoPeers struct{}
 func (NoPeers) PickPeer(key string) (peer ProtoGetter, ok bool) { return }
 func (NoPeers) GetAll() []ProtoGetter                           { return []ProtoGetter{} }
 
-var (
-	portPicker func(groupName string) PeerPicker
-)
+var portPicker func(groupName string) PeerPicker
 
 // RegisterPeerPicker registers the peer initialization function.
 // It is called once, when the first group is created.
