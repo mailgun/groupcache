@@ -46,6 +46,32 @@ var getTests = []struct {
 		complexStruct{1, simpleStruct{2, "three"}}, true},
 }
 
+func TestAdd_evictsOldAndReplaces(t *testing.T) {
+	var evictedKey Key
+	var evictedValue interface{}
+	lru := New(0)
+	lru.OnEvicted = func(key Key, value interface{}) {
+		evictedKey = key
+		evictedValue = value
+	}
+	lru.Add("myKey", 1234, time.Time{})
+	lru.Add("myKey", 1235, time.Time{})
+
+	newVal, ok := lru.Get("myKey")
+	if !ok {
+		t.Fatalf("%s: cache hit = %v; want %v", t.Name(), ok, !ok)
+	}
+	if newVal != 1235 {
+		t.Fatalf("%s: cache hit = %v; want %v", t.Name(), newVal, 1235)
+	}
+	if evictedKey != "myKey" {
+		t.Fatalf("%s: evictedKey = %v; want %v", t.Name(), evictedKey, "myKey")
+	}
+	if evictedValue != 1234 {
+		t.Fatalf("%s: evictedValue = %v; want %v", t.Name(), evictedValue, 1234)
+	}
+}
+
 func TestGet(t *testing.T) {
 	for _, tt := range getTests {
 		lru := New(0)
