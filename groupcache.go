@@ -582,6 +582,11 @@ func (g *Group) CacheStats(which CacheType) CacheStats {
 	}
 }
 
+// NowFunc returns the current time which is used by the LRU to
+// determine if the value has expired. This can be overridden by
+// tests to ensure items are evicted when expired.
+var NowFunc lru.NowFunc = time.Now
+
 // cache is a wrapper around an *lru.Cache that adds synchronization,
 // makes values always be ByteView, and counts the size of all keys and
 // values.
@@ -610,6 +615,7 @@ func (c *cache) add(key string, value ByteView) {
 	defer c.mu.Unlock()
 	if c.lru == nil {
 		c.lru = &lru.Cache{
+			Now: NowFunc,
 			OnEvicted: func(key lru.Key, value interface{}) {
 				val := value.(ByteView)
 				c.nbytes -= int64(len(key.(string))) + int64(val.Len())

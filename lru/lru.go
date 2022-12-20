@@ -22,6 +22,8 @@ import (
 	"time"
 )
 
+type NowFunc func() time.Time
+
 // Cache is an LRU cache. It is not safe for concurrent access.
 type Cache struct {
 	// MaxEntries is the maximum number of cache entries before
@@ -31,6 +33,11 @@ type Cache struct {
 	// OnEvicted optionally specifies a callback function to be
 	// executed when an entry is purged from the cache.
 	OnEvicted func(key Key, value interface{})
+
+	// Now is the Now() function the cache will use to determine
+	// the current time which is used to calculate expired values
+	// Defaults to time.Now()
+	Now NowFunc
 
 	ll    *list.List
 	cache map[interface{}]*list.Element
@@ -53,6 +60,7 @@ func New(maxEntries int) *Cache {
 		MaxEntries: maxEntries,
 		ll:         list.New(),
 		cache:      make(map[interface{}]*list.Element),
+		Now:        time.Now,
 	}
 }
 
@@ -68,6 +76,7 @@ func (c *Cache) Add(key Key, value interface{}, expire time.Time) {
 			c.OnEvicted(key, eee.value)
 		}
 		c.ll.MoveToFront(ee)
+		eee.expire = expire
 		eee.value = value
 		return
 	}
@@ -86,7 +95,7 @@ func (c *Cache) Get(key Key) (value interface{}, ok bool) {
 	if ele, hit := c.cache[key]; hit {
 		entry := ele.Value.(*entry)
 		// If the entry has expired, remove it from the cache
-		if !entry.expire.IsZero() && entry.expire.Before(time.Now()) {
+		if !entry.expire.IsZero() && entry.expire.Before(c.Now()) {
 			c.removeElement(ele)
 			return nil, false
 		}
