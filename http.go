@@ -271,8 +271,8 @@ func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(in.GetGroup()),
-		url.QueryEscape(in.GetKey()),
+		url.PathEscape(in.GetGroup()),
+		url.PathEscape(in.GetKey()),
 	)
 	req, err := http.NewRequestWithContext(ctx, m, u, b)
 	if err != nil {
@@ -300,7 +300,7 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		msg, _ := ioutil.ReadAll(io.LimitReader(res.Body, 1024*1024)) // Limit reading the error body to max 1 MiB
-		return fmt.Errorf("server returned: %v, %v", res.Status, msg)
+		return fmt.Errorf("server returned: %v, %v", res.Status, string(msg))
 	}
 	b := bufferPool.Get().(*bytes.Buffer)
 	b.Reset()

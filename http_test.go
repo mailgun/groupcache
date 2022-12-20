@@ -174,6 +174,15 @@ func TestHTTPPool(t *testing.T) {
 	if !bytes.Equal(setValue, getValue.ByteSlice()) {
 		t.Fatal(errors.New(fmt.Sprintf("incorrect value retrieved after set: %s", getValue)))
 	}
+
+	// Key with non-URL characters to test URL encoding roundtrip
+	key = "a b/c,d"
+	if err := g.Get(ctx, key, StringSink(&value)); err != nil {
+		t.Fatal(err)
+	}
+	if suffix := ":" + key; !strings.HasSuffix(value, suffix) {
+		t.Errorf("Get(%q) = %q, want value ending in %q", key, value, suffix)
+	}
 }
 
 func testKeys(n int) (keys []string) {
