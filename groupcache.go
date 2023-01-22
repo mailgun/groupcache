@@ -274,19 +274,20 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 	_, err := g.setGroup.Do(key, func() (interface{}, error) {
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
+		generation := g.mainCache.generation()
 		if ok {
-			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
+			if err := g.setFromPeer(ctx, owner, key, value, expire, generation); err != nil {
 				return nil, err
 			}
 			// TODO(thrawn01): Not sure if this is useful outside of tests...
 			//  maybe we should ALWAYS update the local cache?
 			if hotCache {
-				g.localSet(key, value, expire, &g.hotCache)
+				g.localSet(key, value, expire, generation, &g.hotCache)
 			}
 			return nil, nil
 		}
 		// We own this key
-		g.localSet(key, value, expire, &g.mainCache)
+		g.localSet(key, value, expire, generation, &g.mainCache)
 		return nil, nil
 	})
 	return err
@@ -495,23 +496,29 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 		}
 	}
 
-	value := ByteView{b: res.Value, e: expire}
+	var generation int64
+	if res.Generation != nil {
+		generation = *res.Generation
+	}
+
+	value := ByteView{b: res.Value, e: expire, g: generation}
 
 	// Always populate the hot cache
 	g.populateCache(key, value, &g.hotCache)
 	return value, nil
 }
 
-func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time) error {
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time, gen int64) error {
 	var expire int64
 	if !e.IsZero() {
 		expire = e.UnixNano()
 	}
 	req := &pb.SetRequest{
-		Expire: &expire,
-		Group:  &g.name,
-		Key:    &k,
-		Value:  v,
+		Expire:     &expire,
+		Group:      &g.name,
+		Key:        &k,
+		Value:      v,
+		Generation: &gen,
 	}
 	return peer.Set(ctx, req)
 }
@@ -543,7 +550,7 @@ func (g *Group) lookupCache(key string) (value ByteView, ok bool) {
 	return
 }
 
-func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cache) {
+func (g *Group) localSet(key string, value []byte, expire time.Time, generation int64, cache *cache) {
 	if g.cacheBytes <= 0 {
 		return
 	}
@@ -551,6 +558,7 @@ func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cach
 	bv := ByteView{
 		b: value,
 		e: expire,
+		g: generation,
 	}
 
 	// Ensure no requests are in flight
@@ -646,21 +654,23 @@ var NowFunc lru.NowFunc = time.Now
 // values.
 type cache struct {
 	mu         sync.RWMutex
-	nbytes     int64 // of all keys and values
 	lru        *lru.Cache
+	nbytes     int64 // of all keys and values
 	nhit, nget int64
 	nevict     int64 // number of evictions
+	gen        int64
 }
 
 func (c *cache) stats() CacheStats {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return CacheStats{
-		Bytes:     c.nbytes,
-		Items:     c.itemsLocked(),
-		Gets:      c.nget,
-		Hits:      c.nhit,
-		Evictions: c.nevict,
+		Bytes:      c.nbytes,
+		Items:      c.itemsLocked(),
+		Gets:       c.nget,
+		Hits:       c.nhit,
+		Evictions:  c.nevict,
+		Generation: c.gen,
 	}
 }
 
@@ -676,6 +686,16 @@ func (c *cache) add(key string, value ByteView) {
 				c.nevict++
 			},
 		}
+	}
+	if c.gen != value.g {
+		if logger != nil {
+			logger.Error().WithFields(map[string]interface{}{
+				"got":  value.g,
+				"have": c.generation,
+				"key":  key,
+			}).Printf("generation mismatch")
+		}
+		return
 	}
 	c.lru.Add(key, value, value.Expire())
 	c.nbytes += int64(len(key)) + int64(value.Len())
@@ -693,7 +713,10 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 		return
 	}
 	c.nhit++
-	return vi.(ByteView), true
+
+	bv := vi.(ByteView)
+	bv.g = c.gen
+	return bv, true
 }
 
 func (c *cache) remove(key string) {
@@ -741,6 +764,12 @@ func (c *cache) itemsLocked() int64 {
 	return int64(c.lru.Len())
 }
 
+func (c *cache) generation() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.gen
+}
+
 // An AtomicInt is an int64 to be accessed atomically.
 type AtomicInt int64
 
@@ -765,9 +794,10 @@ func (i *AtomicInt) String() string {
 
 // CacheStats are returned by stats accessors on Group.
 type CacheStats struct {
-	Bytes     int64
-	Items     int64
-	Gets      int64
-	Hits      int64
-	Evictions int64
+	Bytes      int64
+	Items      int64
+	Gets       int64
+	Hits       int64
+	Evictions  int64
+	Generation int64
 }

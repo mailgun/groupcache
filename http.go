@@ -224,7 +224,12 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			expire = time.Unix(*out.Expire/int64(time.Second), *out.Expire%int64(time.Second))
 		}
 
-		group.localSet(*out.Key, out.Value, expire, &group.mainCache)
+		var generation int64
+		if out.Generation != nil {
+			generation = *out.Generation
+		}
+
+		group.localSet(*out.Key, out.Value, expire, generation, &group.mainCache)
 		return
 	}
 
