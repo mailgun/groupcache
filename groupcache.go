@@ -264,6 +264,34 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
+func (g *Group) GetWithPopulated(ctx context.Context, key string, dest Sink) (bool, error) {
+	g.peersOnce.Do(g.initPeers)
+	g.Stats.Gets.Add(1)
+	if dest == nil {
+		return false, errors.New("groupcache: nil dest Sink")
+	}
+	value, cacheHit := g.lookupCache(key)
+
+	if cacheHit {
+		g.Stats.CacheHits.Add(1)
+		return false, setSinkView(dest, value)
+	}
+
+	// Optimization to avoid double unmarshalling or copying: keep
+	// track of whether the dest was already populated. One caller
+	// (if local) will set this; the losers will not. The common
+	// case will likely be one caller.
+	destPopulated := false
+	value, destPopulated, err := g.load(ctx, key, dest)
+	if err != nil {
+		return false, err
+	}
+	if destPopulated {
+		return true, nil
+	}
+	return false, setSinkView(dest, value)
+}
+
 func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) error {
 	g.peersOnce.Do(g.initPeers)
 
