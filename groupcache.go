@@ -392,8 +392,17 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			if err == nil {
 				g.Stats.PeerLoads.Add(1)
 				return value, nil
-			} else if errors.Is(err, context.Canceled) {
-				// do not count context cancellation as a peer error
+			}
+
+			if errors.Is(err, context.Canceled) {
+				return nil, err
+			}
+
+			if errors.Is(err, &ErrNotFound{}) {
+				return nil, err
+			}
+
+			if errors.Is(err, &ErrRemoteCall{}) {
 				return nil, err
 			}
 
@@ -412,10 +421,6 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 				// since the context is no longer valid
 				return nil, err
 			}
-			// TODO(bradfitz): log the peer's error? keep
-			// log of the past few for /groupcachez?  It's
-			// probably boring (normal task movement), so not
-			// worth logging I imagine.
 		}
 
 		value, err = g.getLocally(ctx, key, dest)

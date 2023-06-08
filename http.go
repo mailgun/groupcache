@@ -19,6 +19,7 @@ package groupcache
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -225,7 +226,11 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	value := AllocatingByteSliceSink(&b)
 	err := group.Get(ctx, key, value)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if errors.Is(err, &ErrNotFound{}) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -299,7 +304,17 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
-		msg, _ := ioutil.ReadAll(io.LimitReader(res.Body, 1024*1024)) // Limit reading the error body to max 1 MiB
+		// Limit reading the error body to max 1 MiB
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 1024*1024))
+
+		if res.StatusCode == http.StatusNotFound {
+			return &ErrNotFound{Msg: strings.Trim(string(msg), "\n")}
+		}
+
+		if res.StatusCode == http.StatusServiceUnavailable {
+			return &ErrRemoteCall{Msg: strings.Trim(string(msg), "\n")}
+		}
+
 		return fmt.Errorf("server returned: %v, %v", res.Status, string(msg))
 	}
 	b := bufferPool.Get().(*bytes.Buffer)

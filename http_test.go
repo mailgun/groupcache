@@ -33,6 +33,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -183,6 +185,24 @@ func TestHTTPPool(t *testing.T) {
 	if suffix := ":" + key; !strings.HasSuffix(value, suffix) {
 		t.Errorf("Get(%q) = %q, want value ending in %q", key, value, suffix)
 	}
+
+	// Get a key that does not exist
+	err := g.Get(ctx, "IDoNotExist", StringSink(&value))
+	errNotFound := &ErrNotFound{}
+	if !errors.As(err, &errNotFound) {
+		t.Fatal(errors.New("expected error to be 'ErrNotFound'"))
+	}
+	assert.Equal(t, "I do not exist error", errNotFound.Error())
+
+	// Get a key that is guaranteed to return an error
+	err = g.Get(ctx, "IAlwaysReturnAnError", StringSink(&value))
+	errRemoteCall := &ErrRemoteCall{}
+	if !errors.As(err, &errRemoteCall) {
+		t.Fatal(errors.New("expected error to be 'ErrRemoteCall'"))
+	}
+
+	assert.Equal(t, "I am a GetterFunc error", errRemoteCall.Error())
+
 }
 
 func testKeys(n int) (keys []string) {
@@ -200,6 +220,14 @@ func beChildForTestHTTPPool(t *testing.T) {
 	p.Set(addrToURL(addrs)...)
 
 	getter := GetterFunc(func(ctx context.Context, key string, dest Sink) error {
+		if key == "IDoNotExist" {
+			return &ErrNotFound{Msg: "I do not exist error"}
+		}
+
+		if key == "IAlwaysReturnAnError" {
+			return &ErrRemoteCall{Msg: "I am a GetterFunc error"}
+		}
+
 		if _, err := http.Get(*serverAddr); err != nil {
 			t.Logf("HTTP request from getter failed with '%s'", err)
 		}
