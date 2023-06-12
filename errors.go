@@ -17,8 +17,9 @@ func (e *ErrNotFound) Is(target error) bool {
 	return ok
 }
 
-// ErrRemoteCall is returned from `group.Get()` when an error that is not a `ErrNotFound`
-// is returned during a remote HTTP instance call
+// ErrRemoteCall is returned from `group.Get()` when a remote GetterFunc returns an
+// error. When this happens `group.Get()` does not attempt to retrieve the value
+// via our local GetterFunc.
 type ErrRemoteCall struct {
 	Msg string
 }
