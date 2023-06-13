@@ -187,21 +187,24 @@ func TestHTTPPool(t *testing.T) {
 	}
 
 	// Get a key that does not exist
-	err := g.Get(ctx, "IDoNotExist", StringSink(&value))
+	err := g.Get(ctx, "IReturnErrNotFound", StringSink(&value))
 	errNotFound := &ErrNotFound{}
 	if !errors.As(err, &errNotFound) {
 		t.Fatal(errors.New("expected error to be 'ErrNotFound'"))
 	}
-	assert.Equal(t, "I do not exist error", errNotFound.Error())
+	assert.Equal(t, "I am a ErrNotFound error", errNotFound.Error())
 
-	// Get a key that is guaranteed to return an error
-	err = g.Get(ctx, "IAlwaysReturnAnError", StringSink(&value))
+	// Get a key that is guaranteed to return a remote error.
+	err = g.Get(ctx, "IReturnErrRemoteCall", StringSink(&value))
 	errRemoteCall := &ErrRemoteCall{}
 	if !errors.As(err, &errRemoteCall) {
 		t.Fatal(errors.New("expected error to be 'ErrRemoteCall'"))
 	}
+	assert.Equal(t, "I am a ErrRemoteCall error", errRemoteCall.Error())
 
-	assert.Equal(t, "I am a GetterFunc error", errRemoteCall.Error())
+	// Get a key that is guaranteed to return an internal (500) error
+	err = g.Get(ctx, "IReturnInternalError", StringSink(&value))
+	assert.Equal(t, "I am a errors.New() error", err.Error())
 
 }
 
@@ -220,12 +223,16 @@ func beChildForTestHTTPPool(t *testing.T) {
 	p.Set(addrToURL(addrs)...)
 
 	getter := GetterFunc(func(ctx context.Context, key string, dest Sink) error {
-		if key == "IDoNotExist" {
-			return &ErrNotFound{Msg: "I do not exist error"}
+		if key == "IReturnErrNotFound" {
+			return &ErrNotFound{Msg: "I am a ErrNotFound error"}
 		}
 
-		if key == "IAlwaysReturnAnError" {
-			return &ErrRemoteCall{Msg: "I am a GetterFunc error"}
+		if key == "IReturnErrRemoteCall" {
+			return &ErrRemoteCall{Msg: "I am a ErrRemoteCall error"}
+		}
+
+		if key == "IReturnInternalError" {
+			return errors.New("I am a errors.New() error")
 		}
 
 		if _, err := http.Get(*serverAddr); err != nil {
