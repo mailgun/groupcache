@@ -26,10 +26,6 @@ type NowFunc func() time.Time
 
 // Cache is an LRU cache. It is not safe for concurrent access.
 type Cache struct {
-	// MaxEntries is the maximum number of cache entries before
-	// an item is evicted. Zero means no limit.
-	MaxEntries int
-
 	// OnEvicted optionally specifies a callback function to be
 	// executed when an entry is purged from the cache.
 	OnEvicted func(key Key, value interface{})
@@ -41,15 +37,19 @@ type Cache struct {
 
 	ll    *list.List
 	cache map[interface{}]*list.Element
+
+	// MaxEntries is the maximum number of cache entries before
+	// an item is evicted. Zero means no limit.
+	MaxEntries int
 }
 
 // A Key may be any value that is comparable. See http://golang.org/ref/spec#Comparison_operators
 type Key interface{}
 
 type entry struct {
+	expire time.Time
 	key    Key
 	value  interface{}
-	expire time.Time
 }
 
 // New creates a new Cache.
@@ -80,7 +80,7 @@ func (c *Cache) Add(key Key, value interface{}, expire time.Time) {
 		eee.value = value
 		return
 	}
-	ele := c.ll.PushFront(&entry{key, value, expire})
+	ele := c.ll.PushFront(&entry{expire, key, value})
 	c.cache[key] = ele
 	if c.MaxEntries != 0 && c.ll.Len() > c.MaxEntries {
 		c.RemoveOldest()

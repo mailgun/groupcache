@@ -249,6 +249,51 @@ func TestCacheEviction(t *testing.T) {
 	}
 }
 
+func TestCachePurging(t *testing.T) {
+	once.Do(testSetup)
+	testKey1 := "TestCachePurging-key1"
+	getTestKey1 := func() {
+		var res string
+		for i := 0; i < 10; i++ {
+			if err := stringGroup.Get(dummyCtx, testKey1, StringSink(&res)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	fills := countFills(getTestKey1)
+	if fills != 1 {
+		t.Fatalf("expected 1 cache fill; got %d", fills)
+	}
+
+	testKey2 := "TestCachePurging-key2"
+	getTestKey2 := func() {
+		var res string
+		for i := 0; i < 10; i++ {
+			if err := stringGroup.Get(dummyCtx, testKey2, StringSink(&res)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	fills = countFills(getTestKey2)
+	if fills != 1 {
+		t.Fatalf("expected 1 cache fill; got %d", fills)
+	}
+
+	g := stringGroup.(*Group)
+	// Clear the cache
+	g.Clear(dummyCtx)
+
+	// Test that the keys are gone.
+	fills = countFills(getTestKey1)
+	if fills != 1 {
+		t.Fatalf("expected 1 cache fill after cache purging; got %d", fills)
+	}
+	fills = countFills(getTestKey2)
+	if fills != 1 {
+		t.Fatalf("expected 1 cache fill after cache purging; got %d", fills)
+	}
+}
+
 type fakePeer struct {
 	hits int
 	fail bool
@@ -272,6 +317,14 @@ func (p *fakePeer) Set(_ context.Context, in *pb.SetRequest) error {
 }
 
 func (p *fakePeer) Remove(_ context.Context, in *pb.GetRequest) error {
+	p.hits++
+	if p.fail {
+		return errors.New("simulated error from peer")
+	}
+	return nil
+}
+
+func (p *fakePeer) Clear(_ context.Context, in *pb.GetRequest) error {
 	p.hits++
 	if p.fail {
 		return errors.New("simulated error from peer")
