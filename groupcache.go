@@ -243,7 +243,6 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 		return errors.New("groupcache: nil dest Sink")
 	}
 	value, cacheHit := g.lookupCache(key)
-
 	if cacheHit {
 		g.Stats.CacheHits.Add(1)
 		return setSinkView(dest, value)
@@ -276,6 +275,8 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
 			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
+				// In-case of peer failure, set it locally.
+				g.localSet(key, value, expire, &g.mainCache)
 				return nil, err
 			}
 			// TODO(thrawn01): Not sure if this is useful outside of tests...
@@ -283,10 +284,9 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 			if hotCache {
 				g.localSet(key, value, expire, &g.hotCache)
 			}
-			return nil, nil
+		} else {
+			g.localSet(key, value, expire, &g.mainCache)
 		}
-		// We own this key
-		g.localSet(key, value, expire, &g.mainCache)
 		return nil, nil
 	})
 	return err
