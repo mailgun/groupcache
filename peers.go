@@ -50,19 +50,35 @@ type NoPeers struct{}
 func (NoPeers) PickPeer(key string) (peer ProtoGetter, ok bool) { return }
 func (NoPeers) GetAll() []ProtoGetter                           { return []ProtoGetter{} }
 
-var (
-	portPicker func(groupName string) PeerPicker
-)
+// RegisterPeerPickerWithWorkspace registers the peer initialization function.
+// It is called once, when the first group is created.
+// Either RegisterPeerPicker or RegisterPerGroupPeerPicker should be
+// called exactly once, but not both.
+func RegisterPeerPickerWithWorkspace(ws *workspace, fn func() PeerPicker) {
+	if ws.portPicker != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	ws.portPicker = func(_ string) PeerPicker { return fn() }
+}
 
 // RegisterPeerPicker registers the peer initialization function.
 // It is called once, when the first group is created.
 // Either RegisterPeerPicker or RegisterPerGroupPeerPicker should be
 // called exactly once, but not both.
 func RegisterPeerPicker(fn func() PeerPicker) {
-	if portPicker != nil {
+	RegisterPeerPickerWithWorkspace(DefaultWorkspace, fn)
+}
+
+// RegisterPerGroupPeerPickerWithWorkspace registers the peer initialization function,
+// which takes the groupName, to be used in choosing a PeerPicker.
+// It is called once, when the first group is created.
+// Either RegisterPeerPicker or RegisterPerGroupPeerPicker should be
+// called exactly once, but not both.
+func RegisterPerGroupPeerPickerWithWorkspace(ws *workspace, fn func(groupName string) PeerPicker) {
+	if ws.portPicker != nil {
 		panic("RegisterPeerPicker called more than once")
 	}
-	portPicker = func(_ string) PeerPicker { return fn() }
+	ws.portPicker = fn
 }
 
 // RegisterPerGroupPeerPicker registers the peer initialization function,
@@ -71,17 +87,14 @@ func RegisterPeerPicker(fn func() PeerPicker) {
 // Either RegisterPeerPicker or RegisterPerGroupPeerPicker should be
 // called exactly once, but not both.
 func RegisterPerGroupPeerPicker(fn func(groupName string) PeerPicker) {
-	if portPicker != nil {
-		panic("RegisterPeerPicker called more than once")
-	}
-	portPicker = fn
+	RegisterPerGroupPeerPickerWithWorkspace(DefaultWorkspace, fn)
 }
 
-func getPeers(groupName string) PeerPicker {
-	if portPicker == nil {
+func getPeers(ws *workspace, groupName string) PeerPicker {
+	if ws.portPicker == nil {
 		return NoPeers{}
 	}
-	pk := portPicker(groupName)
+	pk := ws.portPicker(groupName)
 	if pk == nil {
 		pk = NoPeers{}
 	}

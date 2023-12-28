@@ -86,16 +86,14 @@ func NewHTTPPool(self string) *HTTPPool {
 	return p
 }
 
-var httpPoolMade bool
-
-// NewHTTPPoolOpts initializes an HTTP pool of peers with the given options.
+// NewHTTPPoolOptsWithWorkspace initializes an HTTP pool of peers with the given options.
 // Unlike NewHTTPPool, this function does not register the created pool as an HTTP handler.
 // The returned *HTTPPool implements http.Handler and must be registered using http.Handle.
-func NewHTTPPoolOpts(self string, o *HTTPPoolOptions) *HTTPPool {
-	if httpPoolMade {
+func NewHTTPPoolOptsWithWorkspace(ws *workspace, self string, o *HTTPPoolOptions) *HTTPPool {
+	if ws.httpPoolMade {
 		panic("groupcache: NewHTTPPool must be called only once")
 	}
-	httpPoolMade = true
+	ws.httpPoolMade = true
 
 	p := &HTTPPool{
 		self:        self,
@@ -112,8 +110,15 @@ func NewHTTPPoolOpts(self string, o *HTTPPoolOptions) *HTTPPool {
 	}
 	p.peers = consistenthash.New(p.opts.Replicas, p.opts.HashFn)
 
-	RegisterPeerPicker(func() PeerPicker { return p })
+	RegisterPeerPickerWithWorkspace(ws, func() PeerPicker { return p })
 	return p
+}
+
+// NewHTTPPoolOpts initializes an HTTP pool of peers with the given options.
+// Unlike NewHTTPPool, this function does not register the created pool as an HTTP handler.
+// The returned *HTTPPool implements http.Handler and must be registered using http.Handle.
+func NewHTTPPoolOpts(self string, o *HTTPPoolOptions) *HTTPPool {
+	return NewHTTPPoolOptsWithWorkspace(DefaultWorkspace, self, o)
 }
 
 // Set updates the pool's list of peers.
