@@ -68,7 +68,7 @@ func (f GetterFunc) Get(ctx context.Context, key string, dest Sink) error {
 	return f(ctx, key, dest)
 }
 
-// GetGroup returns the named group previously created with NewGroup, or
+// GetGroupWithWorkspace returns the named group previously created with NewGroup, or
 // nil if there's no such group.
 func GetGroupWithWorkspace(ws *workspace, name string) *Group {
 	ws.mu.RLock()
@@ -83,7 +83,7 @@ func GetGroup(name string) *Group {
 	return GetGroupWithWorkspace(DefaultWorkspace, name)
 }
 
-// NewGroup creates a coordinated group-aware Getter from a Getter.
+// NewGroupWithWorkspace creates a coordinated group-aware Getter from a Getter.
 //
 // The returned Getter tries (but does not guarantee) to run only one
 // Get call at once for a given key across an entire set of peer
@@ -109,7 +109,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	return newGroup(DefaultWorkspace, name, cacheBytes, getter, nil)
 }
 
-// DeregisterGroup removes group from group pool
+// DeregisterGroupWithWorkspace removes group from group pool
 func DeregisterGroupWithWorkspace(ws *workspace, name string) {
 	ws.mu.Lock()
 	delete(ws.groups, name)
@@ -149,7 +149,7 @@ func newGroup(ws *workspace, name string, cacheBytes int64, getter Getter, peers
 	return g
 }
 
-// RegisterNewGroupHook registers a hook that is run each time
+// RegisterNewGroupHookWithWorkspace registers a hook that is run each time
 // a group is created.
 func RegisterNewGroupHookWithWorkspace(ws *workspace, fn func(*Group)) {
 	if ws.newGroupHook != nil {
@@ -164,7 +164,7 @@ func RegisterNewGroupHook(fn func(*Group)) {
 	RegisterNewGroupHookWithWorkspace(DefaultWorkspace, fn)
 }
 
-// RegisterServerStart registers a hook that is run when the first
+// RegisterServerStartWithWorkspace registers a hook that is run when the first
 // group is created.
 func RegisterServerStartWithWorkspace(ws *workspace, fn func()) {
 	if ws.initPeerServer != nil {
