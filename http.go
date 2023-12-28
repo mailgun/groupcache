@@ -76,14 +76,22 @@ type HTTPPoolOptions struct {
 	Context func(*http.Request) context.Context
 }
 
+// NewHTTPPoolWithWorkspace initializes an HTTP pool of peers, and registers itself as a PeerPicker.
+// For convenience, it also registers itself as an http.Handler with http.DefaultServeMux.
+// The self argument should be a valid base URL that points to the current server,
+// for example "http://example.net:8000".
+func NewHTTPPoolWithWorkspace(ws *workspace, self string) *HTTPPool {
+	p := NewHTTPPoolOptsWithWorkspace(ws, self, nil)
+	http.Handle(p.opts.BasePath, p)
+	return p
+}
+
 // NewHTTPPool initializes an HTTP pool of peers, and registers itself as a PeerPicker.
 // For convenience, it also registers itself as an http.Handler with http.DefaultServeMux.
 // The self argument should be a valid base URL that points to the current server,
 // for example "http://example.net:8000".
 func NewHTTPPool(self string) *HTTPPool {
-	p := NewHTTPPoolOpts(self, nil)
-	http.Handle(p.opts.BasePath, p)
-	return p
+	return NewHTTPPoolWithWorkspace(DefaultWorkspace, self)
 }
 
 // NewHTTPPoolOptsWithWorkspace initializes an HTTP pool of peers with the given options.
