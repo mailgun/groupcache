@@ -40,6 +40,8 @@ const defaultReplicas = 50
 
 // HTTPPool implements PeerPicker for a pool of HTTP peers.
 type HTTPPool struct {
+	ws *workspace
+
 	// this peer's base URL, e.g. "https://example.net:8000"
 	self string
 
@@ -104,6 +106,7 @@ func NewHTTPPoolOptsWithWorkspace(ws *workspace, self string, o *HTTPPoolOptions
 	ws.httpPoolMade = true
 
 	p := &HTTPPool{
+		ws:          ws,
 		self:        self,
 		httpGetters: make(map[string]*httpGetter),
 	}
@@ -186,7 +189,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	key := parts[1]
 
 	// Fetch the value for this group/key.
-	group := GetGroup(groupName)
+	group := GetGroupWithWorkspace(p.ws, groupName)
 	if group == nil {
 		http.Error(w, "no such group: "+groupName, http.StatusNotFound)
 		return
