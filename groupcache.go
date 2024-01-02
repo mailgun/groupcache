@@ -68,21 +68,32 @@ func (f GetterFunc) Get(ctx context.Context, key string, dest Sink) error {
 	return f(ctx, key, dest)
 }
 
-var (
-	mu     sync.RWMutex
-	groups = make(map[string]*Group)
-
-	initPeerServerOnce sync.Once
-	initPeerServer     func()
-)
+// GetGroupWithWorkspace returns the named group previously created with NewGroup, or
+// nil if there's no such group.
+func GetGroupWithWorkspace(ws *workspace, name string) *Group {
+	ws.mu.RLock()
+	g := ws.groups[name]
+	ws.mu.RUnlock()
+	return g
+}
 
 // GetGroup returns the named group previously created with NewGroup, or
 // nil if there's no such group.
 func GetGroup(name string) *Group {
-	mu.RLock()
-	g := groups[name]
-	mu.RUnlock()
-	return g
+	return GetGroupWithWorkspace(DefaultWorkspace, name)
+}
+
+// NewGroupWithWorkspace creates a coordinated group-aware Getter from a Getter.
+//
+// The returned Getter tries (but does not guarantee) to run only one
+// Get call at once for a given key across an entire set of peer
+// processes. Concurrent callers both in the local process and in
+// other processes receive copies of the answer once the original Get
+// completes.
+//
+// The group name must be unique for each getter.
+func NewGroupWithWorkspace(ws *workspace, name string, cacheBytes int64, getter Getter) *Group {
+	return newGroup(ws, name, cacheBytes, getter, nil)
 }
 
 // NewGroup creates a coordinated group-aware Getter from a Getter.
@@ -95,28 +106,34 @@ func GetGroup(name string) *Group {
 //
 // The group name must be unique for each getter.
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
-	return newGroup(name, cacheBytes, getter, nil)
+	return newGroup(DefaultWorkspace, name, cacheBytes, getter, nil)
+}
+
+// DeregisterGroupWithWorkspace removes group from group pool
+func DeregisterGroupWithWorkspace(ws *workspace, name string) {
+	ws.mu.Lock()
+	delete(ws.groups, name)
+	ws.mu.Unlock()
 }
 
 // DeregisterGroup removes group from group pool
 func DeregisterGroup(name string) {
-	mu.Lock()
-	delete(groups, name)
-	mu.Unlock()
+	DeregisterGroupWithWorkspace(DefaultWorkspace, name)
 }
 
 // If peers is nil, the peerPicker is called via a sync.Once to initialize it.
-func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
+func newGroup(ws *workspace, name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
 	if getter == nil {
 		panic("nil Getter")
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	initPeerServerOnce.Do(callInitPeerServer)
-	if _, dup := groups[name]; dup {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.initPeerServerOnce.Do(func() { callInitPeerServer(ws) })
+	if _, dup := ws.groups[name]; dup {
 		panic("duplicate registration of group " + name)
 	}
 	g := &Group{
+		ws:          ws,
 		name:        name,
 		getter:      getter,
 		peers:       peers,
@@ -125,43 +142,53 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		setGroup:    &singleflight.Group{},
 		removeGroup: &singleflight.Group{},
 	}
-	if fn := newGroupHook; fn != nil {
+	if fn := ws.newGroupHook; fn != nil {
 		fn(g)
 	}
-	groups[name] = g
+	ws.groups[name] = g
 	return g
 }
 
-// newGroupHook, if non-nil, is called right after a new group is created.
-var newGroupHook func(*Group)
+// RegisterNewGroupHookWithWorkspace registers a hook that is run each time
+// a group is created.
+func RegisterNewGroupHookWithWorkspace(ws *workspace, fn func(*Group)) {
+	if ws.newGroupHook != nil {
+		panic("RegisterNewGroupHook called more than once")
+	}
+	ws.newGroupHook = fn
+}
 
 // RegisterNewGroupHook registers a hook that is run each time
 // a group is created.
 func RegisterNewGroupHook(fn func(*Group)) {
-	if newGroupHook != nil {
-		panic("RegisterNewGroupHook called more than once")
+	RegisterNewGroupHookWithWorkspace(DefaultWorkspace, fn)
+}
+
+// RegisterServerStartWithWorkspace registers a hook that is run when the first
+// group is created.
+func RegisterServerStartWithWorkspace(ws *workspace, fn func()) {
+	if ws.initPeerServer != nil {
+		panic("RegisterServerStart called more than once")
 	}
-	newGroupHook = fn
+	ws.initPeerServer = fn
 }
 
 // RegisterServerStart registers a hook that is run when the first
 // group is created.
 func RegisterServerStart(fn func()) {
-	if initPeerServer != nil {
-		panic("RegisterServerStart called more than once")
-	}
-	initPeerServer = fn
+	RegisterServerStartWithWorkspace(DefaultWorkspace, fn)
 }
 
-func callInitPeerServer() {
-	if initPeerServer != nil {
-		initPeerServer()
+func callInitPeerServer(ws *workspace) {
+	if ws.initPeerServer != nil {
+		ws.initPeerServer()
 	}
 }
 
 // A Group is a cache namespace and associated data loaded spread over
 // a group of 1 or more machines.
 type Group struct {
+	ws         *workspace
 	name       string
 	getter     Getter
 	peersOnce  sync.Once
@@ -232,7 +259,7 @@ func (g *Group) Name() string {
 
 func (g *Group) initPeers() {
 	if g.peers == nil {
-		g.peers = getPeers(g.name)
+		g.peers = getPeers(g.ws, g.name)
 	}
 }
 
