@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/grafana/groupcache_exporter"
-	"github.com/grafana/groupcache_exporter/groupcache/mailgun"
 	"github.com/mailgun/groupcache/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/udhos/groupcache_exporter"
+	"github.com/udhos/groupcache_exporter/groupcache/mailgun"
 )
 
 func main() {

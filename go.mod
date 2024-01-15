@@ -1,8 +1,6 @@
-module github.com/grafana/groupcache_exporter
+module github.com/udhos/groupcache_exporter
 
-go 1.21.5
-
-toolchain go1.21.6
+go 1.21.6
 
 require (
 	github.com/mailgun/groupcache/v2 v2.5.0

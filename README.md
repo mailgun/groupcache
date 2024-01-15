@@ -9,7 +9,7 @@ This exporter implements the prometheus.Collector interface in order to expose P
 # Example for mailgun groupcache
 
 ```golang
-import "github.com/grafana/groupcache_exporter/groupcache/mailgun"
+import "github.com/udhos/groupcache_exporter/groupcache/mailgun"
 
 // ...
 
@@ -47,7 +47,7 @@ Full example: [./examples/groupcache/mailgun](./examples/groupcache/mailgun)
 # Example for modernprogram groupcache
 
 ```golang
-import "github.com/grafana/groupcache_exporter/groupcache/modernprogram"
+import "github.com/udhos/groupcache_exporter/groupcache/modernprogram"
 
 // ...
 
