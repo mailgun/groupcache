@@ -42,7 +42,7 @@ cache := startGroupcache()
 }
 ```
 
-Full example: [./examples/groupcache/mailgun](./examples/groupcache/mailgun)
+Full example: [examples/groupcache-exporter-mailgun](examples/groupcache-exporter-mailgun)
 
 # Example for modernprogram groupcache
 
@@ -80,7 +80,7 @@ cache := startGroupcache()
 }
 ```
 
-Full example: [./examples/groupcache/modernprogram](./examples/groupcache/modernprogram)
+Full example: [examples/groupcache-exporter-modernprogram](examples/groupcache-exporter-modernprogram)
 
 # Testing
 
