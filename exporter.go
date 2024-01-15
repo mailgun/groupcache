@@ -1,9 +1,11 @@
+// Package groupcache_exporter exports prometheus metrics for groupcache.
 package groupcache_exporter
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Exporter implements interface prometheus.Collector to extract metrics from groupcache.
 type Exporter struct {
 	groups []GroupStatistics
 
@@ -23,28 +25,41 @@ type Exporter struct {
 	cacheEvictions      *prometheus.Desc
 }
 
+// GroupStatistics is a plugable interface to extract metrics from a groupcache implementation.
+// GroupStatistics is used by Exporter to collect the group statistics.
+// The user must provide a concrete implementation of this interface that knows how to
+// extract group statistics from the actual groupcache implementation.
 type GroupStatistics interface {
 	// Name returns the group's name
 	Name() string
 
 	// Gets represents any Get request, including from peers
 	Gets() int64
+
 	// CacheHits represents either cache was good
 	CacheHits() int64
+
 	// GetFromPeersLatencyLower represents slowest duration to request value from peers
 	GetFromPeersLatencyLower() int64
+
 	// PeerLoads represents either remote load or remote cache hit (not an error)
 	PeerLoads() int64
+
 	// PeerErrors represents a count of errors from peers
 	PeerErrors() int64
+
 	// Loads represents (gets - cacheHits)
 	Loads() int64
+
 	// LoadsDeduped represents after singleflight
 	LoadsDeduped() int64
+
 	// LocalLoads represents total good local loads
 	LocalLoads() int64
+
 	// LocalLoadErrs represents total bad local loads
 	LocalLoadErrs() int64
+
 	// ServerRequests represents gets that came over the network from peers
 	ServerRequests() int64
 
@@ -61,89 +76,94 @@ type GroupStatistics interface {
 	HotCacheEvictions() int64
 }
 
-func NewExporter(labels map[string]string, groups ...GroupStatistics) *Exporter {
+// NewExporter creates Exporter.
+// namespace is usually the empty string.
+func NewExporter(namespace string, labels map[string]string, groups ...GroupStatistics) *Exporter {
+
+	const subsystem = "groupcache"
+
 	return &Exporter{
 		groups: groups,
 		groupGets: prometheus.NewDesc(
-			"gets_total",
-			"Counter of cache gets (including from peers)",
+			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
+			"Count of cache gets (including from peers)",
 			[]string{"group"},
 			labels,
 		),
 		groupCacheHits: prometheus.NewDesc(
-			"hits_total",
+			prometheus.BuildFQName(namespace, subsystem, "hits_total"),
 			"Count of cache hits (from either main or hot cache)",
 			[]string{"group"},
 			labels,
 		),
 		groupPeerLoads: prometheus.NewDesc(
-			"peer_loads_total",
+			prometheus.BuildFQName(namespace, subsystem, "peer_loads_total"),
 			"Count of non-error loads or cache hits from peers",
 			[]string{"group"},
 			labels,
 		),
 		groupPeerErrors: prometheus.NewDesc(
-			"peer_errors_total",
+			prometheus.BuildFQName(namespace, subsystem, "peer_errors_total"),
 			"Count of errors from peers",
 			[]string{"group"},
 			labels,
 		),
 		groupLoads: prometheus.NewDesc(
-			"loads_total",
+			prometheus.BuildFQName(namespace, subsystem, "loads_total"),
 			"Count of (gets - hits)",
 			[]string{"group"},
 			labels,
 		),
 		groupLoadsDeduped: prometheus.NewDesc(
-			"loads_deduped_total",
+			prometheus.BuildFQName(namespace, subsystem, "loads_deduped_total"),
 			"Count of loads after singleflight",
 			[]string{"group"},
 			labels,
 		),
 		groupLocalLoads: prometheus.NewDesc(
-			"local_load_total",
+			prometheus.BuildFQName(namespace, subsystem, "local_load_total"),
 			"Count of loads from local cache",
 			[]string{"group"},
 			labels,
 		),
 		groupLocalLoadErrs: prometheus.NewDesc(
-			"local_load_errs_total",
+			prometheus.BuildFQName(namespace, subsystem, "local_load_errs_total"),
 			"Count of loads from local cache that failed",
 			[]string{"group"},
 			labels,
 		),
 		groupServerRequests: prometheus.NewDesc(
-			"server_requests_total",
+			prometheus.BuildFQName(namespace, subsystem, "server_requests_total"),
 			"Count of gets that came over the network from peers",
 			[]string{"group"},
 			labels,
 		),
 		cacheBytes: prometheus.NewDesc(
-			"cache_bytes",
+			prometheus.BuildFQName(namespace, subsystem, "cache_bytes"),
 			"Gauge of current bytes in use",
 			[]string{"group", "type"},
 			labels,
 		),
 		cacheItems: prometheus.NewDesc(
-			"cache_items",
+			prometheus.BuildFQName(namespace, subsystem, "cache_items"),
 			"Gauge of current items in use",
 			[]string{"group", "type"},
 			labels,
 		),
 		cacheGets: prometheus.NewDesc(
-			"cache_gets_total",
+			prometheus.BuildFQName(namespace, subsystem, "cache_gets_total"),
 			"Count of cache gets",
 			[]string{"group", "type"},
 			labels,
 		),
 		cacheHits: prometheus.NewDesc(
-			"cache_hits_total",
+			prometheus.BuildFQName(namespace, subsystem, "cache_hits_total"),
 			"Count of cache hits",
 			[]string{"group", "type"},
 			labels,
 		),
 		cacheEvictions: prometheus.NewDesc(
-			"cache_evictions_total",
+			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_total"),
 			"Count of cache evictions",
 			[]string{"group", "type"},
 			labels,
@@ -151,6 +171,7 @@ func NewExporter(labels map[string]string, groups ...GroupStatistics) *Exporter 
 	}
 }
 
+// Describe sends metrics descriptors.
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.groupGets
 	ch <- e.groupCacheHits
@@ -168,6 +189,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.cacheEvictions
 }
 
+// Collect is called by the Prometheus registry when collecting metrics.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	for _, group := range e.groups {
 		e.collectFromGroup(ch, group)
