@@ -5,12 +5,12 @@ import (
 	"github.com/modernprogram/groupcache/v2"
 )
 
-// Group implements interface GroupStatistics to extract metrics from mailgun groupcache group.
+// Group implements interface GroupStatistics to extract metrics from modernprogram groupcache group.
 type Group struct {
 	group *groupcache.Group
 }
 
-// New creates a new GroupMailgun.
+// New creates a new Group.
 func New(group *groupcache.Group) *Group {
 	return &Group{group: group}
 }

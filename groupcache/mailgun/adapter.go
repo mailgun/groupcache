@@ -10,7 +10,7 @@ type Group struct {
 	group *groupcache.Group
 }
 
-// New creates a new GroupMailgun.
+// New creates a new Group.
 func New(group *groupcache.Group) *Group {
 	return &Group{group: group}
 }
