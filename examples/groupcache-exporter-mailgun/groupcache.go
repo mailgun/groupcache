@@ -62,9 +62,7 @@ func startGroupcache() *groupcache.Group {
 			}
 
 			expire := time.Now().Add(ttl)
-			dest.SetBytes(data, expire)
-
-			return nil
+			return dest.SetBytes(data, expire)
 		}))
 
 	return cache

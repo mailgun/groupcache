@@ -5,16 +5,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
-	"github.com/modernprogram/groupcache/v2"
+	"github.com/golang/groupcache"
 )
 
 func startGroupcache() *groupcache.Group {
-
-	ttl := time.Minute
-
-	log.Printf("groupcache ttl: %v", ttl)
 
 	//
 	// create groupcache pool
@@ -54,15 +49,14 @@ func startGroupcache() *groupcache.Group {
 	cache := groupcache.NewGroup("files", groupcacheSizeBytes, groupcache.GetterFunc(
 		func(ctx context.Context, key string, dest groupcache.Sink) error {
 
-			log.Printf("getter: loading: key:%s, ttl:%v", key, ttl)
+			log.Printf("getter: loading: key:%s", key)
 
 			data, errFile := os.ReadFile(key)
 			if errFile != nil {
 				return errFile
 			}
 
-			expire := time.Now().Add(ttl)
-			return dest.SetBytes(data, expire)
+			return dest.SetBytes(data)
 		}))
 
 	return cache
