@@ -47,7 +47,7 @@ func startGroupcache() *groupcache.Group {
 	//
 	// 64 MB max per-node memory usage
 	cache := groupcache.NewGroup("files", groupcacheSizeBytes, groupcache.GetterFunc(
-		func(ctx context.Context, key string, dest groupcache.Sink) error {
+		func(_ /*ctx*/ context.Context, key string, dest groupcache.Sink) error {
 
 			log.Printf("getter: loading: key:%s", key)
 
