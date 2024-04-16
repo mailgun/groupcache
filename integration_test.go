@@ -71,7 +71,9 @@ func TestManualSet(t *testing.T) {
 	wg.Wait()
 
 	// Use a dummy self address so that we don't handle gets in-process.
-	p := NewHTTPPool("should-be-ignored")
+	p, mux := newTestHTTPPool("should-be-ignored")
+	defer mux.Close()
+
 	p.Set(addrToURL(childAddr)...)
 
 	// Dummy getter function. Gets should go to children only.
@@ -146,8 +148,11 @@ var _ http.Handler = (*overwriteHttpPool)(nil)
 func beChildForIntegrationTest(t *testing.T) {
 	addrs := strings.Split(*peerAddrs, ",")
 
+	p, mux := newTestHTTPPool("http://" + addrs[*peerIndex])
+	defer mux.Close()
+
 	hp := overwriteHttpPool{
-		p: NewHTTPPool("http://" + addrs[*peerIndex]),
+		p: p,
 	}
 	hp.p.Set(addrToURL(addrs)...)
 

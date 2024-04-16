@@ -272,21 +272,78 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 	}
 
 	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+		wg := sync.WaitGroup{}
+		errs := make(chan error)
+
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
-			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
+			if err := g.setFromPeer(ctx, owner, key, value, expire, false); err != nil {
 				return nil, err
 			}
 			// TODO(thrawn01): Not sure if this is useful outside of tests...
 			//  maybe we should ALWAYS update the local cache?
-			if hotCache {
-				g.localSet(key, value, expire, &g.hotCache)
+			if !hotCache {
+				return nil, nil
 			}
-			return nil, nil
+
+			g.localSet(key, value, expire, &g.hotCache)
+
+			for _, peer := range g.peers.GetAll() {
+				if peer == owner {
+					// Avoid setting to owner a second time
+					continue
+				}
+				wg.Add(1)
+				go func(peer ProtoGetter) {
+					errs <- g.setFromPeer(ctx, peer, key, value, expire, true)
+					wg.Done()
+				}(peer)
+			}
+
+			go func() {
+				wg.Wait()
+				close(errs)
+			}()
+
+			var err error
+			for e := range errs {
+				if e != nil {
+					err = errors.Join(err, e)
+				}
+			}
+
+			return nil, err
 		}
 		// We own this key
 		g.localSet(key, value, expire, &g.mainCache)
+
+		if hotCache {
+			// Also set to the hot cache of all peers
+
+			for _, peer := range g.peers.GetAll() {
+				wg.Add(1)
+				go func(peer ProtoGetter) {
+					errs <- g.setFromPeer(ctx, peer, key, value, expire, true)
+					wg.Done()
+				}(peer)
+			}
+
+			go func() {
+				wg.Wait()
+				close(errs)
+			}()
+
+			var err error
+			for e := range errs {
+				if e != nil {
+					err = errors.Join(err, e)
+				}
+			}
+
+			return nil, err
+		}
+
 		return nil, nil
 	})
 	return err
@@ -329,11 +386,11 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 			close(errs)
 		}()
 
-		// TODO(thrawn01): Should we report all errors? Reporting context
-		//  cancelled error for each peer doesn't make much sense.
 		var err error
 		for e := range errs {
-			err = e
+			if e != nil {
+				err = errors.Join(err, e)
+			}
 		}
 
 		return nil, err
@@ -473,7 +530,7 @@ func (g *Group) getFromPeer(ctx context.Context, peer ProtoGetter, key string) (
 	return value, nil
 }
 
-func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time) error {
+func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v []byte, e time.Time, hotCache bool) error {
 	var expire int64
 	if !e.IsZero() {
 		expire = e.UnixNano()
@@ -484,6 +541,11 @@ func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v [
 		Key:    &k,
 		Value:  v,
 	}
+
+	if hotCache {
+		req.HotCache = &hotCache
+	}
+
 	return peer.Set(ctx, req)
 }
 
