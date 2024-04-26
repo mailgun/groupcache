@@ -213,16 +213,16 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var expire time.Time
-		if out.Expire != nil && *out.Expire != 0 {
-			expire = time.Unix(*out.Expire/int64(time.Second), *out.Expire%int64(time.Second))
+		if out.Expire != 0 {
+			expire = time.Unix(out.Expire/int64(time.Second), out.Expire%int64(time.Second))
 		}
 
 		c := &group.mainCache
-		if out.HotCache != nil && *out.HotCache {
+		if out.HotCache {
 			c = &group.hotCache
 		}
 
-		group.localSet(*out.Key, out.Value, expire, c)
+		group.localSet(out.Key, out.Value, expire, c)
 		return
 	}
 
@@ -250,7 +250,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
+	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: expireNano})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
