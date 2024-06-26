@@ -298,6 +298,11 @@ func (g *Group) Remove(ctx context.Context, key string) error {
 	g.peersOnce.Do(g.initPeers)
 
 	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
+		var peerList []string
+		for _, peer := range g.peers.GetAll() {
+			peerList = append(peerList, peer.GetURL())
+		}
+		logrus.WithField("name", g.name).Infof("Group.Remove() peers:%+v", peerList)
 
 		// Remove from key owner first
 		owner, ok := g.peers.PickPeer(key)
