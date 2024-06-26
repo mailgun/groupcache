@@ -32,6 +32,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/mailgun/groupcache/v2/consistenthash"
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
+	"github.com/sirupsen/logrus"
 )
 
 const defaultBasePath = "/_groupcache/"
@@ -186,6 +187,15 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	group.Stats.ServerRequests.Add(1)
+
+	var peerList []string
+	for _, peer := range group.peers.GetAll() {
+		peerList = append(peerList, peer.GetURL())
+	}
+	logrus.WithFields(logrus.Fields{
+		"name":  groupName,
+		"peers": strings.Join(peerList, ","),
+	}).Infof("HTTPPool.ServeHTTP() %s %s", r.Method, r.URL.String())
 
 	// Delete the key and return 200
 	if r.Method == http.MethodDelete {
