@@ -488,6 +488,11 @@ func (g *Group) setFromPeer(ctx context.Context, peer ProtoGetter, k string, v [
 }
 
 func (g *Group) removeFromPeer(ctx context.Context, peer ProtoGetter, key string) error {
+	logrus.WithFields(logrus.Fields{
+		"name": g.name,
+		"peer": peer.GetURL(),
+		"key":  key,
+	}).Info("Group.removeFromPeer")
 	req := &pb.GetRequest{
 		Group: &g.name,
 		Key:   &key,
@@ -524,6 +529,10 @@ func (g *Group) localSet(key string, value []byte, expire time.Time, cache *cach
 }
 
 func (g *Group) localRemove(key string) {
+	logrus.WithFields(logrus.Fields{
+		"name": g.name,
+		"key":  key,
+	}).Info("Group.localRemove")
 	// Clear key from our local cache
 	if g.cacheBytes <= 0 {
 		return
