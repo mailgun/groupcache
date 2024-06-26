@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -296,6 +297,16 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 // request to all peers.
 func (g *Group) Remove(ctx context.Context, key string) error {
 	g.peersOnce.Do(g.initPeers)
+
+	var peerList []string
+	for _, peer := range g.peers.GetAll() {
+		peerList = append(peerList, peer.GetURL())
+	}
+	logrus.WithFields(logrus.Fields{
+		"name":  g.name,
+		"peers": strings.Join(peerList, ","),
+		"key":   key,
+	}).Info("Group.Remove()")
 
 	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
 		// Remove from key owner first
