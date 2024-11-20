@@ -9,20 +9,21 @@ import (
 type Exporter struct {
 	groups []GroupStatistics
 
-	groupGets           *prometheus.Desc
-	groupCacheHits      *prometheus.Desc
-	groupPeerLoads      *prometheus.Desc
-	groupPeerErrors     *prometheus.Desc
-	groupLoads          *prometheus.Desc
-	groupLoadsDeduped   *prometheus.Desc
-	groupLocalLoads     *prometheus.Desc
-	groupLocalLoadErrs  *prometheus.Desc
-	groupServerRequests *prometheus.Desc
-	cacheBytes          *prometheus.Desc
-	cacheItems          *prometheus.Desc
-	cacheGets           *prometheus.Desc
-	cacheHits           *prometheus.Desc
-	cacheEvictions      *prometheus.Desc
+	groupGets                *prometheus.Desc
+	groupCacheHits           *prometheus.Desc
+	groupPeerLoads           *prometheus.Desc
+	groupPeerErrors          *prometheus.Desc
+	groupLoads               *prometheus.Desc
+	groupLoadsDeduped        *prometheus.Desc
+	groupLocalLoads          *prometheus.Desc
+	groupLocalLoadErrs       *prometheus.Desc
+	groupServerRequests      *prometheus.Desc
+	cacheBytes               *prometheus.Desc
+	cacheItems               *prometheus.Desc
+	cacheGets                *prometheus.Desc
+	cacheHits                *prometheus.Desc
+	cacheEvictions           *prometheus.Desc
+	cacheEvictionsNonExpired *prometheus.Desc
 }
 
 // GroupStatistics is a plugable interface to extract metrics from a groupcache implementation.
@@ -68,12 +69,14 @@ type GroupStatistics interface {
 	MainCacheGets() int64
 	MainCacheHits() int64
 	MainCacheEvictions() int64
+	MainCacheEvictionsNonExpired() int64
 
 	HotCacheItems() int64
 	HotCacheBytes() int64
 	HotCacheGets() int64
 	HotCacheHits() int64
 	HotCacheEvictions() int64
+	HotCacheEvictionsNonExpired() int64
 }
 
 // NewExporter creates Exporter.
@@ -168,6 +171,12 @@ func NewExporter(namespace string, labels map[string]string, groups ...GroupStat
 			[]string{"group", "type"},
 			labels,
 		),
+		cacheEvictionsNonExpired: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_nonexpired_total"),
+			"Count of cache evictions for non-expired keys",
+			[]string{"group", "type"},
+			labels,
+		),
 	}
 }
 
@@ -187,6 +196,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.cacheGets
 	ch <- e.cacheHits
 	ch <- e.cacheEvictions
+	ch <- e.cacheEvictionsNonExpired
 }
 
 // Collect is called by the Prometheus registry when collecting metrics.
@@ -219,10 +229,12 @@ func (e *Exporter) collectCacheStats(ch chan<- prometheus.Metric, stats GroupSta
 	ch <- prometheus.MustNewConstMetric(e.cacheGets, prometheus.CounterValue, float64(stats.MainCacheGets()), stats.Name(), "main")
 	ch <- prometheus.MustNewConstMetric(e.cacheHits, prometheus.CounterValue, float64(stats.MainCacheHits()), stats.Name(), "main")
 	ch <- prometheus.MustNewConstMetric(e.cacheEvictions, prometheus.CounterValue, float64(stats.MainCacheEvictions()), stats.Name(), "main")
+	ch <- prometheus.MustNewConstMetric(e.cacheEvictionsNonExpired, prometheus.CounterValue, float64(stats.MainCacheEvictionsNonExpired()), stats.Name(), "main")
 
 	ch <- prometheus.MustNewConstMetric(e.cacheItems, prometheus.GaugeValue, float64(stats.HotCacheItems()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheBytes, prometheus.GaugeValue, float64(stats.HotCacheBytes()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheGets, prometheus.CounterValue, float64(stats.HotCacheGets()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheHits, prometheus.CounterValue, float64(stats.HotCacheHits()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheEvictions, prometheus.CounterValue, float64(stats.HotCacheEvictions()), stats.Name(), "hot")
+	ch <- prometheus.MustNewConstMetric(e.cacheEvictionsNonExpired, prometheus.CounterValue, float64(stats.HotCacheEvictionsNonExpired()), stats.Name(), "hot")
 }

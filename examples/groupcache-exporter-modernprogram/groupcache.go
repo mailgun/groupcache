@@ -20,13 +20,15 @@ func startGroupcache() *groupcache.Group {
 	// create groupcache pool
 	//
 
+	workspace := groupcache.NewWorkspace()
+
 	groupcachePort := ":5000"
 
 	myURL := "http://127.0.0.1" + groupcachePort
 
 	log.Printf("groupcache my URL: %s", myURL)
 
-	pool := groupcache.NewHTTPPoolOpts(myURL, &groupcache.HTTPPoolOptions{})
+	pool := groupcache.NewHTTPPoolOptsWithWorkspace(workspace, myURL, &groupcache.HTTPPoolOptions{})
 
 	//
 	// start groupcache server
@@ -51,7 +53,7 @@ func startGroupcache() *groupcache.Group {
 	// https://talks.golang.org/2013/oscon-dl.slide#46
 	//
 	// 64 MB max per-node memory usage
-	cache := groupcache.NewGroup("files", groupcacheSizeBytes, groupcache.GetterFunc(
+	cache := groupcache.NewGroupWithWorkspace(workspace, "files", groupcacheSizeBytes, groupcache.GetterFunc(
 		func(_ /*ctx*/ context.Context, key string, dest groupcache.Sink) error {
 
 			log.Printf("getter: loading: key:%s, ttl:%v", key, ttl)

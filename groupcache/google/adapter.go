@@ -95,6 +95,11 @@ func (g *Group) MainCacheEvictions() int64 {
 	return g.group.CacheStats(groupcache.MainCache).Evictions
 }
 
+// MainCacheEvictionsNonExpired represents number of evictions for non-expired keys in the main cache
+func (g *Group) MainCacheEvictionsNonExpired() int64 {
+	return 0
+}
+
 // HotCacheItems represents number of items in the main cache
 func (g *Group) HotCacheItems() int64 {
 	return g.group.CacheStats(groupcache.HotCache).Items
@@ -118,4 +123,9 @@ func (g *Group) HotCacheHits() int64 {
 // HotCacheEvictions represents number of evictions in the hot cache
 func (g *Group) HotCacheEvictions() int64 {
 	return g.group.CacheStats(groupcache.HotCache).Evictions
+}
+
+// HotCacheEvictionsNonExpired represents number of evictions for non-expired keys in the hot cache
+func (g *Group) HotCacheEvictionsNonExpired() int64 {
+	return 0
 }
