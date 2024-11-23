@@ -173,7 +173,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...GroupStat
 		),
 		cacheEvictionsNonExpired: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_nonexpired_total"),
-			"Count of cache evictions for non-expired keys",
+			"Count of cache evictions for non-expired keys due to memory full.",
 			[]string{"group", "type"},
 			labels,
 		),
