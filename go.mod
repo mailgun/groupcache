@@ -5,7 +5,7 @@ go 1.23.3
 require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/mailgun/groupcache/v2 v2.5.0
-	github.com/modernprogram/groupcache/v2 v2.6.2
+	github.com/modernprogram/groupcache/v2 v2.6.3
 	github.com/prometheus/client_golang v1.20.5
 )
 
