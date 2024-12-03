@@ -35,6 +35,7 @@ import (
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 	"github.com/mailgun/groupcache/v2/lru"
 	"github.com/mailgun/groupcache/v2/singleflight"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -117,13 +118,16 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		panic("duplicate registration of group " + name)
 	}
 	g := &Group{
-		name:        name,
-		getter:      getter,
-		peers:       peers,
-		cacheBytes:  cacheBytes,
-		loadGroup:   &singleflight.Group{},
-		setGroup:    &singleflight.Group{},
-		removeGroup: &singleflight.Group{},
+		name:                name,
+		getter:              getter,
+		peers:               peers,
+		cacheBytes:          cacheBytes,
+		loadGroup:           &singleflight.Group{},
+		setGroup:            &singleflight.Group{},
+		removeGroup:         &singleflight.Group{},
+		metricGetLatency:    metricGetLatency.WithLabelValues(name),
+		metricSetLatency:    metricSetLatency.WithLabelValues(name),
+		metricRemoveLatency: metricRemoveLatency.WithLabelValues(name),
 	}
 	if fn := newGroupHook; fn != nil {
 		fn(g)
@@ -201,6 +205,10 @@ type Group struct {
 
 	// Stats are statistics on the group.
 	Stats Stats
+
+	metricGetLatency    prometheus.Observer
+	metricSetLatency    prometheus.Observer
+	metricRemoveLatency prometheus.Observer
 }
 
 // flightGroup is defined as an interface which flightgroup.Group
@@ -236,7 +244,13 @@ func (g *Group) initPeers() {
 	}
 }
 
-func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
+func (g *Group) Get(ctx context.Context, key string, dest Sink) (err error) {
+	timer := prometheus.NewTimer(g.metricGetLatency)
+	defer func() {
+		if err == nil {
+			timer.ObserveDuration()
+		}
+	}()
 	g.peersOnce.Do(g.initPeers)
 	g.Stats.Gets.Add(1)
 	if dest == nil {
@@ -254,7 +268,7 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	// (if local) will set this; the losers will not. The common
 	// case will likely be one caller.
 	destPopulated := false
-	value, destPopulated, err := g.load(ctx, key, dest)
+	value, destPopulated, err = g.load(ctx, key, dest)
 	if err != nil {
 		return err
 	}
@@ -264,14 +278,20 @@ func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
 	return setSinkView(dest, value)
 }
 
-func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) error {
+func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.Time, hotCache bool) (err error) {
+	timer := prometheus.NewTimer(g.metricSetLatency)
+	defer func() {
+		if err == nil {
+			timer.ObserveDuration()
+		}
+	}()
 	g.peersOnce.Do(g.initPeers)
 
 	if key == "" {
 		return errors.New("empty Set() key not allowed")
 	}
 
-	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+	_, err = g.setGroup.Do(key, func() (interface{}, error) {
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
@@ -294,10 +314,16 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 
 // Remove clears the key from our cache then forwards the remove
 // request to all peers.
-func (g *Group) Remove(ctx context.Context, key string) error {
+func (g *Group) Remove(ctx context.Context, key string) (err error) {
+	timer := prometheus.NewTimer(g.metricRemoveLatency)
+	defer func() {
+		if err == nil {
+			timer.ObserveDuration()
+		}
+	}()
 	g.peersOnce.Do(g.initPeers)
 
-	_, err := g.removeGroup.Do(key, func() (interface{}, error) {
+	_, err = g.removeGroup.Do(key, func() (interface{}, error) {
 
 		// Remove from key owner first
 		owner, ok := g.peers.PickPeer(key)
