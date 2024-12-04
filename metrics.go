@@ -14,7 +14,7 @@ var (
 		Name:       "groupcache_get_from_peer_latency",
 		Help:       "The latency in seconds getting value from remote peer",
 		Objectives: SummaryObjectives,
-	}, []string{"group", "peer"})
+	}, []string{"group"})
 	metricUpdatePeerLatency = prometheus.NewSummaryVec(prometheus.SummaryOpts{
 		Name:       "groupcache_update_peer_latency",
 		Help:       "The latency in seconds updating a remote peer during a Set",

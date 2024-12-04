@@ -126,7 +126,6 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		setGroup:                 &singleflight.Group{},
 		removeGroup:              &singleflight.Group{},
 		metricGetFromPeerLatency: metricGetFromPeerLatency.WithLabelValues(name),
-		metricUpdatePeerLatency:  metricUpdatePeerLatency.WithLabelValues(name),
 	}
 	if fn := newGroupHook; fn != nil {
 		fn(g)
@@ -206,7 +205,6 @@ type Group struct {
 	Stats Stats
 
 	metricGetFromPeerLatency prometheus.Observer
-	metricUpdatePeerLatency  prometheus.Observer
 }
 
 // flightGroup is defined as an interface which flightgroup.Group
@@ -281,7 +279,7 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
-			timer := prometheus.NewTimer(g.metricUpdatePeerLatency)
+			timer := prometheus.NewTimer(metricUpdatePeerLatency.WithLabelValues(g.name, owner.GetURL()))
 			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
 				return nil, err
 			}
@@ -574,6 +572,17 @@ func (g *Group) populateCache(key string, value ByteView, cache *cache) {
 // CacheType represents a type of cache.
 type CacheType int
 
+func (t CacheType) String() string {
+	switch t {
+	case MainCache:
+		return "main"
+	case HotCache:
+		return "hot"
+	default:
+		return ""
+	}
+}
+
 const (
 	// The MainCache is the cache for items that this peer is the
 	// owner for.
@@ -594,6 +603,13 @@ func (g *Group) CacheStats(which CacheType) CacheStats {
 		return g.hotCache.stats()
 	default:
 		return CacheStats{}
+	}
+}
+
+// CacheStatsMetrics exposes CacheStats as Prometheus metrics.
+func (g *Group) CacheStatsMetrics() []prometheus.Collector {
+	return []prometheus.Collector{
+		&CacheStatsCollector{group: g},
 	}
 }
 
@@ -722,4 +738,79 @@ type CacheStats struct {
 	Gets      int64
 	Hits      int64
 	Evictions int64
+}
+
+var (
+	statsBytesDesc = prometheus.NewDesc(
+		"groupcache_stats_bytes",
+		"The number of bytes stored in cache",
+		[]string{"group", "type"}, nil,
+	)
+	statsItemsDesc = prometheus.NewDesc(
+		"groupcache_stats_items",
+		"The number of items stored in cache",
+		[]string{"group", "type"}, nil,
+	)
+	statsGetsDesc = prometheus.NewDesc(
+		"groupcache_stats_gets",
+		"The number of get requests",
+		[]string{"group", "type"}, nil,
+	)
+	statsHitsDesc = prometheus.NewDesc(
+		"groupcache_stats_hits",
+		"The number of cache hits",
+		[]string{"group", "type"}, nil,
+	)
+	statsEvictionsDesc = prometheus.NewDesc(
+		"groupcache_stats_evictions",
+		"The number of cache evictions",
+		[]string{"group", "type"}, nil,
+	)
+)
+
+// CacheStats exposed as Prometheus metrics.
+type CacheStatsCollector struct {
+	group *Group
+}
+
+func (c *CacheStatsCollector) Describe(ch chan<- *prometheus.Desc) {
+	prometheus.DescribeByCollect(c, ch)
+}
+
+func (c *CacheStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	types := []CacheType{MainCache, HotCache}
+	for _, t := range types {
+		stats := c.group.CacheStats(t)
+		tstr := t.String()
+		ch <- prometheus.MustNewConstMetric(
+			statsBytesDesc,
+			prometheus.GaugeValue,
+			float64(stats.Bytes),
+			c.group.name, tstr,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			statsItemsDesc,
+			prometheus.GaugeValue,
+			float64(stats.Items),
+			c.group.name, tstr,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			statsGetsDesc,
+			prometheus.CounterValue,
+			float64(stats.Gets),
+			c.group.name, tstr,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			statsHitsDesc,
+			prometheus.CounterValue,
+			float64(stats.Hits),
+			c.group.name, tstr,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			statsEvictionsDesc,
+			prometheus.CounterValue,
+			float64(stats.Evictions),
+			c.group.name, tstr,
+		)
+	}
 }
