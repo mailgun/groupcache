@@ -35,6 +35,7 @@ import (
 	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 	"github.com/mailgun/groupcache/v2/lru"
 	"github.com/mailgun/groupcache/v2/singleflight"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -117,13 +118,15 @@ func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *G
 		panic("duplicate registration of group " + name)
 	}
 	g := &Group{
-		name:        name,
-		getter:      getter,
-		peers:       peers,
-		cacheBytes:  cacheBytes,
-		loadGroup:   &singleflight.Group{},
-		setGroup:    &singleflight.Group{},
-		removeGroup: &singleflight.Group{},
+		name:                     name,
+		getter:                   getter,
+		peers:                    peers,
+		cacheBytes:               cacheBytes,
+		loadGroup:                &singleflight.Group{},
+		setGroup:                 &singleflight.Group{},
+		removeGroup:              &singleflight.Group{},
+		metricGetFromPeerLatency: metricGetFromPeerLatency.WithLabelValues(name),
+		metricUpdatePeerLatency:  metricUpdatePeerLatency.WithLabelValues(name),
 	}
 	if fn := newGroupHook; fn != nil {
 		fn(g)
@@ -201,6 +204,9 @@ type Group struct {
 
 	// Stats are statistics on the group.
 	Stats Stats
+
+	metricGetFromPeerLatency prometheus.Observer
+	metricUpdatePeerLatency  prometheus.Observer
 }
 
 // flightGroup is defined as an interface which flightgroup.Group
@@ -275,9 +281,11 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {
+			timer := prometheus.NewTimer(g.metricUpdatePeerLatency)
 			if err := g.setFromPeer(ctx, owner, key, value, expire); err != nil {
 				return nil, err
 			}
+			timer.ObserveDuration()
 			// TODO(thrawn01): Not sure if this is useful outside of tests...
 			//  maybe we should ALWAYS update the local cache?
 			if hotCache {
@@ -382,12 +390,14 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 			value, err = g.getFromPeer(ctx, peer, key)
 
 			// metrics duration compute
-			duration := int64(time.Since(start)) / int64(time.Millisecond)
+			duration := time.Since(start)
+			durationMs := int64(duration / time.Millisecond)
 
 			// metrics only store the slowest duration
-			if g.Stats.GetFromPeersLatencyLower.Get() < duration {
-				g.Stats.GetFromPeersLatencyLower.Store(duration)
+			if g.Stats.GetFromPeersLatencyLower.Get() < durationMs {
+				g.Stats.GetFromPeersLatencyLower.Store(durationMs)
 			}
+			g.metricGetFromPeerLatency.Observe(duration.Seconds())
 
 			if err == nil {
 				g.Stats.PeerLoads.Add(1)

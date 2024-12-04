@@ -5,21 +5,27 @@ import (
 )
 
 var (
-	metricPeerUpdateLatency = prometheus.NewSummaryVec(prometheus.SummaryOpts{
-		Name: "groupcache_peer_update_latency",
-		Help: "The latency in seconds during peer update after a Set",
-		Objectives: map[float64]float64{
-			0.5:  0.05,
-			0.95: 0.01,
-			0.99: 0.001,
-			1:    0.001,
-		},
+	SummaryObjectives = map[float64]float64{
+		0.5:  0.05,
+		0.99: 0.001,
+		1:    0.001,
+	}
+	metricGetFromPeerLatency = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		Name:       "groupcache_get_from_peer_latency",
+		Help:       "The latency in seconds getting value from remote peer",
+		Objectives: SummaryObjectives,
+	}, []string{"group", "peer"})
+	metricUpdatePeerLatency = prometheus.NewSummaryVec(prometheus.SummaryOpts{
+		Name:       "groupcache_update_peer_latency",
+		Help:       "The latency in seconds updating a remote peer during a Set",
+		Objectives: SummaryObjectives,
 	}, []string{"group", "peer"})
 )
 
 // GetMetrics about Groupcache.
 func GetMetrics() []prometheus.Collector {
 	return []prometheus.Collector{
-		metricPeerUpdateLatency,
+		metricGetFromPeerLatency,
+		metricUpdatePeerLatency,
 	}
 }
