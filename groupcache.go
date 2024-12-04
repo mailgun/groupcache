@@ -606,10 +606,12 @@ func (g *Group) CacheStats(which CacheType) CacheStats {
 	}
 }
 
-// CacheStatsMetrics exposes CacheStats as Prometheus metrics.
-func (g *Group) CacheStatsMetrics() []prometheus.Collector {
+// GetMetrics returns Prometheus metrics.
+func (g *Group) GetMetrics() []prometheus.Collector {
 	return []prometheus.Collector{
 		&CacheStatsCollector{group: g},
+		metricGetFromPeerLatency,
+		metricUpdatePeerLatency,
 	}
 }
 

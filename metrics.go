@@ -21,11 +21,3 @@ var (
 		Objectives: SummaryObjectives,
 	}, []string{"group", "peer"})
 )
-
-// GetMetrics about Groupcache.
-func GetMetrics() []prometheus.Collector {
-	return []prometheus.Collector{
-		metricGetFromPeerLatency,
-		metricUpdatePeerLatency,
-	}
-}
