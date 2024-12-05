@@ -9,21 +9,22 @@ import (
 type Exporter struct {
 	groups []GroupStatistics
 
-	groupGets                *prometheus.Desc
-	groupCacheHits           *prometheus.Desc
-	groupPeerLoads           *prometheus.Desc
-	groupPeerErrors          *prometheus.Desc
-	groupLoads               *prometheus.Desc
-	groupLoadsDeduped        *prometheus.Desc
-	groupLocalLoads          *prometheus.Desc
-	groupLocalLoadErrs       *prometheus.Desc
-	groupServerRequests      *prometheus.Desc
-	cacheBytes               *prometheus.Desc
-	cacheItems               *prometheus.Desc
-	cacheGets                *prometheus.Desc
-	cacheHits                *prometheus.Desc
-	cacheEvictions           *prometheus.Desc
-	cacheEvictionsNonExpired *prometheus.Desc
+	groupGets                     *prometheus.Desc
+	groupCacheHits                *prometheus.Desc
+	groupGetFromPeersLatencyLower *prometheus.Desc
+	groupPeerLoads                *prometheus.Desc
+	groupPeerErrors               *prometheus.Desc
+	groupLoads                    *prometheus.Desc
+	groupLoadsDeduped             *prometheus.Desc
+	groupLocalLoads               *prometheus.Desc
+	groupLocalLoadErrs            *prometheus.Desc
+	groupServerRequests           *prometheus.Desc
+	cacheBytes                    *prometheus.Desc
+	cacheItems                    *prometheus.Desc
+	cacheGets                     *prometheus.Desc
+	cacheHits                     *prometheus.Desc
+	cacheEvictions                *prometheus.Desc
+	cacheEvictionsNonExpired      *prometheus.Desc
 }
 
 // GroupStatistics is a plugable interface to extract metrics from a groupcache implementation.
@@ -87,6 +88,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...GroupStat
 
 	return &Exporter{
 		groups: groups,
+
 		groupGets: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
 			"Count of cache gets (including from peers)",
@@ -96,6 +98,12 @@ func NewExporter(namespace string, labels map[string]string, groups ...GroupStat
 		groupCacheHits: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "hits_total"),
 			"Count of cache hits (from either main or hot cache)",
+			[]string{"group"},
+			labels,
+		),
+		groupGetFromPeersLatencyLower: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_slowest_milliseconds"),
+			"Represent slowest duration to request value from peers.",
 			[]string{"group"},
 			labels,
 		),
@@ -184,6 +192,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...GroupStat
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.groupGets
 	ch <- e.groupCacheHits
+	ch <- e.groupGetFromPeersLatencyLower
 	ch <- e.groupPeerLoads
 	ch <- e.groupPeerErrors
 	ch <- e.groupLoads
@@ -214,6 +223,7 @@ func (e *Exporter) collectFromGroup(ch chan<- prometheus.Metric, stats GroupStat
 func (e *Exporter) collectStats(ch chan<- prometheus.Metric, stats GroupStatistics) {
 	ch <- prometheus.MustNewConstMetric(e.groupGets, prometheus.CounterValue, float64(stats.Gets()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupCacheHits, prometheus.CounterValue, float64(stats.CacheHits()), stats.Name())
+	ch <- prometheus.MustNewConstMetric(e.groupGetFromPeersLatencyLower, prometheus.GaugeValue, float64(stats.GetFromPeersLatencyLower()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerLoads, prometheus.CounterValue, float64(stats.PeerLoads()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerErrors, prometheus.CounterValue, float64(stats.PeerErrors()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupLoads, prometheus.CounterValue, float64(stats.Loads()), stats.Name())
