@@ -4,45 +4,21 @@ linters:
   # Full list of linters - https://golangci-lint.run/usage/linters
   disable-all: true
   enable:
-    # - bodyclose # https://github.com/timakin/bodyclose
-    # - gomodguard
-    # - errcheck # Mandatory. Do not disable.
-    # - gocritic
+    - gomodguard
+    - errcheck
+    - gocritic
     - goimports
-    # - gosec
-    # - gosimple
+    - gosec
+    - gosimple
     - govet
-    # - noctx
-    # - nolintlint
-    # - ineffassign # Mandatory. Do not disable.
-    # - staticcheck # Mandatory. Do not disable.
+    - noctx
+    - nolintlint
+    - ineffassign
+    - staticcheck
     # - stylecheck
-    # - typecheck
-    # - unused
-
-# Other linters:
-#    - dogsled
-#    - dupl
-#    - exportloopref
-#    - exhaustive # e.g. missing cases in switch of type
-#    - funlen
-#    - gochecknoinits
-#    - gocognit
-#    - goconst
-#    - gocyclo
-#    - goerr113
-#    - gofmt
-#    - goprintffuncname
-#    - lll
-#    - misspell
-#    - nakedret
-#    - nlreturn
-#    - prealloc
-#    - revive
-#    - rowserrcheck
-#    - stylecheck
-#    - unconvert
-#    - unparam
+    - typecheck
+    - unused
+    - gocyclo
 
 linters-settings:
   gocritic:
@@ -52,39 +28,11 @@ linters-settings:
       - opinionated
       - performance
       - style
-    disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
-      - whyNoLint # checked by nolintlint linter
-      - hugeParam # TODO(vtopc): configure(80 bytes is probably not so much) and enable.
-      - rangeValCopy # TODO(vtopc): configure(disable for tests) and enable.
-
-  errcheck:
-    # List of functions to exclude from checking, where each entry is a single function to exclude.
-    # See https://github.com/kisielk/errcheck#excluding-functions for details.
-    exclude-functions:
-      - (io.Closer).Close
-      - (io.ReadCloser).Close
 
   govet:
     enable-all: true
     disable:
-     - shadow
      - fieldalignment
-
-  gomodguard:
-    blocked:
-      # List of blocked modules.
-      # Default: []
-      modules:
-        - github.com/golang/protobuf:
-            recommendations:
-              - google.golang.org/protobuf
-            reason: "see https://developers.google.com/protocol-buffers/docs/reference/go/faq#modules"
-        - github.com/pkg/errors:
-            recommendations:
-              - errors
-              - github.com/mailgun/errors
-            reason: "Deprecated"
 
 issues:
   # Maximum issues count per one linter. Set to 0 to disable. Default is 50.
