@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Baliedge/groupcache_exporter"
-	"github.com/Baliedge/groupcache_exporter/groupcache/mailgun"
 	"github.com/mailgun/groupcache/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -31,12 +30,11 @@ func main() {
 
 		log.Printf("starting metrics server at: %s %s", metricsPort, metricsRoute)
 
-		mailgun := mailgun.New(cache)
 		labels := map[string]string{
 			"app": appName,
 		}
 		namespace := ""
-		collector := groupcache_exporter.NewExporter(namespace, labels, mailgun)
+		collector := groupcache_exporter.NewExporter(namespace, labels, cache)
 
 		prometheus.MustRegister(collector)
 

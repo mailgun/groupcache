@@ -2,6 +2,7 @@
 package groupcache_exporter
 
 import (
+	"github.com/mailgun/groupcache/v2"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -82,12 +83,16 @@ type GroupStatistics interface {
 
 // NewExporter creates Exporter.
 // namespace is usually the empty string.
-func NewExporter(namespace string, labels map[string]string, groups ...GroupStatistics) *Exporter {
-
+func NewExporter(namespace string, labels map[string]string, groups ...*groupcache.Group) *Exporter {
 	const subsystem = "groupcache"
 
+	statgroups := make([]GroupStatistics, 0, len(groups))
+	for _, g := range groups {
+		statgroups = append(statgroups, newStatsAdapter(g))
+	}
+
 	return &Exporter{
-		groups: groups,
+		groups: statgroups,
 
 		groupGets: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
