@@ -201,6 +201,15 @@ type Group struct {
 
 	// Stats are statistics on the group.
 	Stats Stats
+
+	// Обновлять ли другие ноды при записи значений
+	IsUpdateOtherPeers bool
+}
+
+// Модификатор обновления других нод
+func (g *Group) WithUpdateOtherNodes() *Group {
+	g.IsUpdateOtherPeers = true
+	return g
 }
 
 // flightGroup is defined as an interface which flightgroup.Group
@@ -272,6 +281,28 @@ func (g *Group) Set(ctx context.Context, key string, value []byte, expire time.T
 	}
 
 	_, err := g.setGroup.Do(key, func() (interface{}, error) {
+		if g.IsUpdateOtherPeers {
+			g.localSet(key, value, expire, &g.mainCache)
+			wg := sync.WaitGroup{}
+			errs := make(chan error)
+			// Асинхронно обновим значения на всех нодах, кроме текущей
+			for _, peer := range g.peers.GetAll() {
+				if peer == g.peers.GetSelfPeer() {
+					continue
+				}
+
+				wg.Add(1)
+				go func(peer ProtoGetter) {
+					errs <- g.setFromPeer(ctx, peer, key, value, expire)
+					wg.Done()
+				}(peer)
+			}
+			go func() {
+				wg.Wait()
+				close(errs)
+			}()
+			return nil, nil
+		}
 		// If remote peer owns this key
 		owner, ok := g.peers.PickPeer(key)
 		if ok {

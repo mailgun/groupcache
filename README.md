@@ -1,9 +1,15 @@
 # groupcache
 
-A modified version of [group cache](https://github.com/golang/groupcache) with
-support for `context.Context`, [go modules](https://github.com/golang/go/wiki/Modules),
-and explicit key removal and expiration. See the `CHANGELOG` for a complete list of 
-modifications.
+Модифицированная версия [group cache](https://github.com/golang/groupcache) с
+поддержкой `context.Context`, [go modules](https://github.com/golang/go/wiki/Modules) и явным удалением ключа и сроком его действия. 
+Так же добавлена опция извещения всех нод при изменении ключа.
+
+Для того, чтобы активировать опцию извещения при изменении, необходимо добавить .WithUpdateOtherNodes() 
+при инциализации кеша. Пример:
+```go
+cache := groupcache.NewGroup(cacheName, someSize, someFillFunction).WithUpdateOtherNodes()
+```
+При активации опции значение будет обновлено на всех нодах кеша.
 
 ## Summary
 

@@ -159,6 +159,10 @@ func (p *HTTPPool) PickPeer(key string) (ProtoGetter, bool) {
 	return nil, false
 }
 
+func (p *HTTPPool) GetSelfPeer() ProtoGetter {
+	return p.httpGetters[p.self]
+}
+
 func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Parse request.
 	if !strings.HasPrefix(r.URL.Path, p.opts.BasePath) {
