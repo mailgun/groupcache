@@ -1,98 +1,14 @@
-[![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/udhos/groupcache_exporter/blob/main/LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/udhos/groupcache_exporter)](https://goreportcard.com/report/github.com/udhos/groupcache_exporter)
-[![Go Reference](https://pkg.go.dev/badge/github.com/udhos/groupcache_exporter.svg)](https://pkg.go.dev/github.com/udhos/groupcache_exporter)
+[![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Baliedge/groupcache_exporter/blob/main/LICENSE)
 
-# Prometheus Groupcache exporter
+# Prometheus Groupcache Exporter
 
-This exporter implements the prometheus.Collector interface in order to expose Prometheus metrics for [groupcache](https://github.com/golang/groupcache).
+This exporter extracts statistics from [groupcache](https://github.com/golang/groupcache) instances and converts to Prometheus metrics.
 
-# Example for mailgun groupcache
-
-```golang
-import "github.com/udhos/groupcache_exporter/groupcache/mailgun"
-
-// ...
-
-appName := filepath.Base(os.Args[0])
-
-cache := startGroupcache()
-
-//
-// expose prometheus metrics
-//
-{
-    metricsRoute := "/metrics"
-    metricsPort := ":3000"
-
-    log.Printf("starting metrics server at: %s %s", metricsPort, metricsRoute)
-
-    mailgun := mailgun.New(cache)
-    labels := map[string]string{
-        "app": appName,
-    }
-    namespace := ""
-    collector := groupcache_exporter.NewExporter(namespace, labels, mailgun)
-
-    prometheus.MustRegister(collector)
-
-    go func() {
-        http.Handle(metricsRoute, promhttp.Handler())
-        log.Fatal(http.ListenAndServe(metricsPort, nil))
-    }()
-}
-```
+# Example
 
 Full example: [examples/groupcache-exporter-mailgun](examples/groupcache-exporter-mailgun)
 
-# Example for modernprogram groupcache
-
-```golang
-import "github.com/udhos/groupcache_exporter/groupcache/modernprogram"
-
-// ...
-
-appName := filepath.Base(os.Args[0])
-
-cache := startGroupcache()
-
-//
-// expose prometheus metrics
-//
-{
-    metricsRoute := "/metrics"
-    metricsPort := ":3000"
-
-    log.Printf("starting metrics server at: %s %s", metricsPort, metricsRoute)
-
-    modernprogram := modernprogram.New(cache)
-    labels := map[string]string{
-        "app": appName,
-    }
-    namespace := ""
-    collector := groupcache_exporter.NewExporter(namespace, labels, modernprogram)
-
-    prometheus.MustRegister(collector)
-
-    go func() {
-        http.Handle(metricsRoute, promhttp.Handler())
-        log.Fatal(http.ListenAndServe(metricsPort, nil))
-    }()
-}
-```
-
-Full example: [examples/groupcache-exporter-modernprogram](examples/groupcache-exporter-modernprogram)
-
-# Testing
-
-## Build
-
-    go install ./...
-
-## Run example application
-
-    groupcache-exporter-mailgun
-
-## Query the metrics endpoint
+## Exported Metrics
 
 ```bash
 curl -s localhost:3000/metrics | grep -E ^groupcache
