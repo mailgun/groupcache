@@ -6,7 +6,7 @@ This exporter extracts statistics from [groupcache](https://github.com/golang/gr
 
 # Example
 
-Full example: [examples/groupcache-exporter-mailgun](examples/groupcache-exporter-mailgun)
+Full example: [examples](examples)
 
 ## Exported Metrics
 
