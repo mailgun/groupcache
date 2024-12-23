@@ -134,6 +134,9 @@ func TestExporter(t *testing.T) {
 			Name: "groupcache_hits_total",
 		},
 		{
+			Name: "groupcache_get_from_peers_latency_slowest",
+		},
+		{
 			Name: "groupcache_loads_deduped_total",
 		},
 		{
