@@ -96,6 +96,14 @@ func TestExporter(t *testing.T) {
 			Labels: prometheus.Labels{"type": "hot"},
 		},
 		{
+			Name:   "groupcache_cache_evictions_nonexpired_total",
+			Labels: prometheus.Labels{"type": "main"},
+		},
+		{
+			Name:   "groupcache_cache_evictions_nonexpired_total",
+			Labels: prometheus.Labels{"type": "hot"},
+		},
+		{
 			Name:   "groupcache_cache_evictions_total",
 			Labels: prometheus.Labels{"type": "main"},
 		},
@@ -126,15 +134,15 @@ func TestExporter(t *testing.T) {
 		{
 			Name:   "groupcache_cache_items",
 			Labels: prometheus.Labels{"type": "hot"},
+		},
+		{
+			Name: "groupcache_get_from_peers_latency_lower",
 		},
 		{
 			Name: "groupcache_gets_total",
 		},
 		{
 			Name: "groupcache_hits_total",
-		},
-		{
-			Name: "groupcache_get_from_peers_latency_slowest",
 		},
 		{
 			Name: "groupcache_loads_deduped_total",
@@ -146,7 +154,7 @@ func TestExporter(t *testing.T) {
 			Name: "groupcache_local_load_errs_total",
 		},
 		{
-			Name: "groupcache_local_load_total",
+			Name: "groupcache_local_loads_total",
 		},
 		{
 			Name: "groupcache_peer_errors_total",

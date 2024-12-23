@@ -11,7 +11,7 @@ type Exporter struct {
 	groups []GroupStatistics
 
 	groupGets                     *prometheus.Desc
-	groupCacheHits                *prometheus.Desc
+	groupHits                     *prometheus.Desc
 	groupGetFromPeersLatencyLower *prometheus.Desc
 	groupPeerLoads                *prometheus.Desc
 	groupPeerErrors               *prometheus.Desc
@@ -96,25 +96,25 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 
 		groupGets: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
-			"Count of cache gets (including from peers)",
+			"Count of cache gets (including from peers, from either main or hot cache)",
 			[]string{"group"},
 			labels,
 		),
-		groupCacheHits: prometheus.NewDesc(
+		groupHits: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "hits_total"),
 			"Count of cache hits (from either main or hot cache)",
 			[]string{"group"},
 			labels,
 		),
 		groupGetFromPeersLatencyLower: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_slowest"),
-			"Represent slowest duration to request value from peers.",
+			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_lower"),
+			"Represent slowest duration to request value from peers",
 			[]string{"group"},
 			labels,
 		),
 		groupPeerLoads: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "peer_loads_total"),
-			"Count of non-error loads or cache hits from peers",
+			"Count of loads or cache hits from peers",
 			[]string{"group"},
 			labels,
 		),
@@ -137,20 +137,20 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 			labels,
 		),
 		groupLocalLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "local_load_total"),
+			prometheus.BuildFQName(namespace, subsystem, "local_loads_total"),
 			"Count of loads from local cache",
 			[]string{"group"},
 			labels,
 		),
 		groupLocalLoadErrs: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "local_load_errs_total"),
-			"Count of loads from local cache that failed",
+			"Count of load errors from local cache",
 			[]string{"group"},
 			labels,
 		),
 		groupServerRequests: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "server_requests_total"),
-			"Count of gets that came over the network from peers",
+			"Count of gets received from peers",
 			[]string{"group"},
 			labels,
 		),
@@ -186,7 +186,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 		),
 		cacheEvictionsNonExpired: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_nonexpired_total"),
-			"Count of cache evictions for non-expired keys due to memory full.",
+			"Count of cache evictions for non-expired keys due to memory full",
 			[]string{"group", "type"},
 			labels,
 		),
@@ -196,7 +196,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 // Describe sends metrics descriptors.
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.groupGets
-	ch <- e.groupCacheHits
+	ch <- e.groupHits
 	ch <- e.groupGetFromPeersLatencyLower
 	ch <- e.groupPeerLoads
 	ch <- e.groupPeerErrors
@@ -227,7 +227,7 @@ func (e *Exporter) collectFromGroup(ch chan<- prometheus.Metric, stats GroupStat
 
 func (e *Exporter) collectStats(ch chan<- prometheus.Metric, stats GroupStatistics) {
 	ch <- prometheus.MustNewConstMetric(e.groupGets, prometheus.CounterValue, float64(stats.Gets()), stats.Name())
-	ch <- prometheus.MustNewConstMetric(e.groupCacheHits, prometheus.CounterValue, float64(stats.CacheHits()), stats.Name())
+	ch <- prometheus.MustNewConstMetric(e.groupHits, prometheus.CounterValue, float64(stats.CacheHits()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupGetFromPeersLatencyLower, prometheus.GaugeValue, stats.GetFromPeersLatencyLower(), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerLoads, prometheus.CounterValue, float64(stats.PeerLoads()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerErrors, prometheus.CounterValue, float64(stats.PeerErrors()), stats.Name())
