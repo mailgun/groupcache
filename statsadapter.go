@@ -30,8 +30,12 @@ func (g *statsAdapter) CacheHits() int64 {
 }
 
 // GetFromPeersLatencyLower represents slowest duration to request value from peers
-func (g *statsAdapter) GetFromPeersLatencyLower() int64 {
-	return g.group.Stats.GetFromPeersLatencyLower.Get()
+func (g *statsAdapter) GetFromPeersLatencyLower() float64 {
+	latencyMs := g.group.Stats.GetFromPeersLatencyLower.Get()
+	if latencyMs == 0 {
+		return 0
+	}
+	return float64(latencyMs) / 1000
 }
 
 // PeerLoads represents either remote load or remote cache hit (not an error)

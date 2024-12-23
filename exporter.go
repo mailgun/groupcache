@@ -43,7 +43,7 @@ type GroupStatistics interface {
 	CacheHits() int64
 
 	// GetFromPeersLatencyLower represents slowest duration to request value from peers
-	GetFromPeersLatencyLower() int64
+	GetFromPeersLatencyLower() float64
 
 	// PeerLoads represents either remote load or remote cache hit (not an error)
 	PeerLoads() int64
@@ -107,7 +107,7 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 			labels,
 		),
 		groupGetFromPeersLatencyLower: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_slowest_milliseconds"),
+			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_slowest"),
 			"Represent slowest duration to request value from peers.",
 			[]string{"group"},
 			labels,
@@ -228,7 +228,7 @@ func (e *Exporter) collectFromGroup(ch chan<- prometheus.Metric, stats GroupStat
 func (e *Exporter) collectStats(ch chan<- prometheus.Metric, stats GroupStatistics) {
 	ch <- prometheus.MustNewConstMetric(e.groupGets, prometheus.CounterValue, float64(stats.Gets()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupCacheHits, prometheus.CounterValue, float64(stats.CacheHits()), stats.Name())
-	ch <- prometheus.MustNewConstMetric(e.groupGetFromPeersLatencyLower, prometheus.GaugeValue, float64(stats.GetFromPeersLatencyLower()), stats.Name())
+	ch <- prometheus.MustNewConstMetric(e.groupGetFromPeersLatencyLower, prometheus.GaugeValue, stats.GetFromPeersLatencyLower(), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerLoads, prometheus.CounterValue, float64(stats.PeerLoads()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupPeerErrors, prometheus.CounterValue, float64(stats.PeerErrors()), stats.Name())
 	ch <- prometheus.MustNewConstMetric(e.groupLoads, prometheus.CounterValue, float64(stats.Loads()), stats.Name())

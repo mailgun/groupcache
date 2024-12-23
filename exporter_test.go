@@ -167,8 +167,6 @@ func TestExporter(t *testing.T) {
 	}
 
 	t.Run("Lint", func(t *testing.T) {
-		// FIXME: Fix lint errors
-		t.Skip()
 		linter := promlint.New(bytes.NewReader(content))
 		problems, err := linter.Lint()
 		require.NoError(t, err)
