@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"sync"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/Baliedge/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
+	"github.com/mailgun/holster/v4/retry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil/promlint"
@@ -27,11 +29,14 @@ type MetricInfo struct {
 	Labels prometheus.Labels
 }
 
+const (
+	pingRoute    = "/ping"
+	metricsRoute = "/metrics"
+	ttl          = time.Minute
+)
+
 func TestExporter(t *testing.T) {
 	// Given
-	const metricsRoute = "/metrics"
-	const httpPort = 9080
-	const ttl = time.Minute
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -48,20 +53,15 @@ func TestExporter(t *testing.T) {
 
 	// Setup HTTP server.
 	mux := http.NewServeMux()
+	mux.HandleFunc(pingRoute, pingHandler)
 	mux.Handle(metricsRoute, promhttp.Handler())
-	httpSrv := &http.Server{
-		Addr:              fmt.Sprintf("127.0.0.1:%d", httpPort),
-		Handler:           mux,
-		ReadHeaderTimeout: time.Minute,
-	}
-	wg.Add(1)
-	go func() {
-		_ = httpSrv.ListenAndServe()
-		wg.Done()
-	}()
+	httpSrv, err := startHTTPServer(ctx, mux, &wg)
+	require.NoError(t, err)
+	t.Logf("HTTP server ready at %s", httpSrv.Addr)
 	defer func() {
 		// Tear down.
-		err := httpSrv.Shutdown(ctx)
+		t.Log("HTTP server shutting down...")
+		err = httpSrv.Shutdown(ctx)
 		require.NoError(t, err)
 		wg.Wait()
 	}()
@@ -70,17 +70,13 @@ func TestExporter(t *testing.T) {
 	// Add cache activity.
 	for i := 0; i < 10; i++ {
 		var value string
-		err := group.Get(ctx, fmt.Sprintf("key%d", i), groupcache.StringSink(&value))
+		err = group.Get(ctx, fmt.Sprintf("key%d", i), groupcache.StringSink(&value))
 		require.NoError(t, err)
 	}
 
 	// Then
 	// Get metrics from endpoint.
-	httpClt := http.DefaultClient
-	metricsURL := fmt.Sprintf("http://127.0.0.1:%d%s", httpPort, metricsRoute)
-	rq, err := http.NewRequestWithContext(ctx, http.MethodGet, metricsURL, http.NoBody)
-	require.NoError(t, err)
-	rs, err := httpClt.Do(rq)
+	rs, err := getURL(ctx, fmt.Sprintf("http://%s%s", httpSrv.Addr, metricsRoute))
 	require.NoError(t, err)
 	content, err := io.ReadAll(rs.Body)
 	defer rs.Body.Close()
@@ -182,6 +178,53 @@ func TestExporter(t *testing.T) {
 	})
 }
 
+// Start an HTTP server on a dynamic port.
+func startHTTPServer(ctx context.Context, mux *http.ServeMux, wg *sync.WaitGroup) (*http.Server, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	httpSrv := &http.Server{
+		Addr:              listener.Addr().(*net.TCPAddr).AddrPort().String(),
+		Handler:           mux,
+		ReadHeaderTimeout: time.Minute,
+	}
+	wg.Add(1)
+	go func() {
+		_ = httpSrv.Serve(listener)
+		wg.Done()
+	}()
+	err = waitForReady(ctx, httpSrv)
+	return httpSrv, err
+}
+
+func waitForReady(ctx context.Context, httpSrv *http.Server) error {
+	httpClt := http.DefaultClient
+	return retry.Until(ctx, retry.Interval(20*time.Millisecond), func(ctx context.Context, _ int) error {
+		pingURL := fmt.Sprintf("http://%s%s", httpSrv.Addr, pingRoute)
+		ctx2, cancel2 := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel2()
+		rq, err := http.NewRequestWithContext(ctx2, http.MethodGet, pingURL, http.NoBody)
+		if err != nil {
+			return err
+		}
+		rs, err := httpClt.Do(rq)
+		if err != nil {
+			return err
+		}
+		rs.Body.Close()
+		return nil
+	})
+}
+
+func getURL(ctx context.Context, u string) (*http.Response, error) {
+	rq, err := http.NewRequestWithContext(ctx, http.MethodGet, u, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	return http.DefaultClient.Do(rq)
+}
+
 // Assert expected metric name and labels are present.
 func assertMetricPresent(t *testing.T, expected MetricInfo, mfs map[string]*promdto.MetricFamily) {
 	mf, ok := mfs[expected.Name]
@@ -209,6 +252,10 @@ func assertMetricPresent(t *testing.T, expected MetricInfo, mfs map[string]*prom
 		break
 	}
 	assert.True(t, matchFlag, "Labels mismatch")
+}
+
+func pingHandler(writer http.ResponseWriter, rq *http.Request) {
+	writer.WriteHeader(http.StatusOK)
 }
 
 func labelsToString(labels prometheus.Labels) string {
