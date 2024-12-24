@@ -76,13 +76,25 @@ var (
 	initPeerServer     func()
 )
 
-// GetGroup returns the named group previously created with NewGroup, or
+// GetGroup returns the named group previously created with NewGroup or
 // nil if there's no such group.
 func GetGroup(name string) *Group {
 	mu.RLock()
 	g := groups[name]
 	mu.RUnlock()
 	return g
+}
+
+// GetGroups returns all groups previously created with NewGroup or nil if no
+// groups.
+func GetGroups() []*Group {
+	list := make([]*Group, 0, len(groups))
+	mu.RLock()
+	for _, group := range groups {
+		list = append(list, group)
+	}
+	mu.RUnlock()
+	return list
 }
 
 // NewGroup creates a coordinated group-aware Getter from a Getter.

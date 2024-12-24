@@ -12,9 +12,11 @@ import (
 
 // ...
 
-group := groupcache.NewGroup("mygroup", cacheSize, getter)
-collector := promexporter.NewExporter("", nil, group)
+collector := promexporter.NewExporter("", nil)
 prometheus.MustRegister(collector)
+
+// Collector will discover newly created group.
+group := groupcache.NewGroup("mygroup", cacheSize, getter)
 ```
 
 ## Exported Metrics

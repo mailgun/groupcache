@@ -8,8 +8,6 @@ import (
 
 // Exporter implements interface prometheus.Collector to extract metrics from groupcache.
 type Exporter struct {
-	groups []GroupStatistics
-
 	groupGets                     *prometheus.Desc
 	groupHits                     *prometheus.Desc
 	groupGetFromPeersLatencyLower *prometheus.Desc
@@ -83,17 +81,10 @@ type GroupStatistics interface {
 
 // NewExporter creates Exporter.
 // namespace is usually the empty string.
-func NewExporter(namespace string, labels map[string]string, groups ...*groupcache.Group) *Exporter {
+func NewExporter(namespace string, labels map[string]string) *Exporter {
 	const subsystem = "groupcache"
 
-	statgroups := make([]GroupStatistics, 0, len(groups))
-	for _, g := range groups {
-		statgroups = append(statgroups, newStatsAdapter(g))
-	}
-
 	return &Exporter{
-		groups: statgroups,
-
 		groupGets: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
 			"Count of cache gets (including from peers, from either main or hot cache)",
@@ -193,6 +184,15 @@ func NewExporter(namespace string, labels map[string]string, groups ...*groupcac
 	}
 }
 
+func (e *Exporter) getStatGroups() []GroupStatistics {
+	groups := groupcache.GetGroups()
+	statgroups := make([]GroupStatistics, 0, len(groups))
+	for _, g := range groups {
+		statgroups = append(statgroups, newStatsAdapter(g))
+	}
+	return statgroups
+}
+
 // Describe sends metrics descriptors.
 func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 	ch <- e.groupGets
@@ -215,7 +215,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 
 // Collect is called by the Prometheus registry when collecting metrics.
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
-	for _, group := range e.groups {
+	for _, group := range e.getStatGroups() {
 		e.collectFromGroup(ch, group)
 	}
 }
