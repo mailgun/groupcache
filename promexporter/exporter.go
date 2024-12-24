@@ -1,5 +1,5 @@
-// Package groupcache_exporter exports prometheus metrics for groupcache.
-package groupcache_exporter
+// Package promexporter exports Prometheus metrics for groupcache.
+package promexporter
 
 import (
 	"github.com/mailgun/groupcache/v2"

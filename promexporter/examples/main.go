@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Baliedge/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
+	"github.com/mailgun/groupcache/v2/promexporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -34,7 +34,7 @@ func main() {
 			"app": appName,
 		}
 		namespace := ""
-		collector := groupcache_exporter.NewExporter(namespace, labels, cache)
+		collector := promexporter.NewExporter(namespace, labels, cache)
 
 		prometheus.MustRegister(collector)
 

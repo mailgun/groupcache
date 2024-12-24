@@ -1,4 +1,4 @@
-package groupcache_exporter
+package promexporter
 
 import (
 	"github.com/mailgun/groupcache/v2"

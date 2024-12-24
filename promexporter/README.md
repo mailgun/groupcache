@@ -1,8 +1,6 @@
-[![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Baliedge/groupcache_exporter/blob/main/LICENSE)
-
 # Prometheus Groupcache Exporter
 
-This exporter extracts statistics from [Mailgun groupcache](https://github.com/golang/groupcache) instances and converts to Prometheus metrics.
+This exporter extracts statistics from groupcache instances and exports Prometheus metrics.
 
 # Example
 
@@ -26,3 +24,7 @@ Full example: [examples](examples)
 - `groupcache_peer_errors_total{group}`: Count of errors from peers
 - `groupcache_peer_loads_total{group}`: Count of loads or cache hits from peers
 - `groupcache_server_requests_total{group}`: Count of gets received from peers
+
+# Attribution
+
+This package source was copied from https://github.com/udhos/groupcache_exporter.  See LICENSE for MIT license details impacting the contents of this package directory in addition to the LICENSE at the root of this repo for co-existing Apache license details.

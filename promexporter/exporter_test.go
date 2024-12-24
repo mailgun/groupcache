@@ -1,4 +1,4 @@
-package groupcache_exporter_test
+package promexporter_test
 
 import (
 	"bytes"
@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Baliedge/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
+	"github.com/mailgun/groupcache/v2/promexporter"
 	"github.com/mailgun/holster/v4/retry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -48,7 +48,7 @@ func TestExporter(t *testing.T) {
 		return nil
 	}
 	group := groupcache.NewGroup("test", 10_000, groupcache.GetterFunc(getter))
-	gcexporter := groupcache_exporter.NewExporter("", nil, group)
+	gcexporter := promexporter.NewExporter("", nil, group)
 	prometheus.MustRegister(gcexporter)
 
 	// Setup HTTP server.
