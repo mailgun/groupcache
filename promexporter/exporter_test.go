@@ -87,84 +87,28 @@ func TestExporter(t *testing.T) {
 		Name   string
 		Labels prometheus.Labels
 	}{
-		{
-			Name:   "groupcache_cache_bytes",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_bytes",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name:   "groupcache_cache_evictions_nonexpired_total",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_evictions_nonexpired_total",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name:   "groupcache_cache_evictions_total",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_evictions_total",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name:   "groupcache_cache_gets_total",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_gets_total",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name:   "groupcache_cache_hits_total",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_hits_total",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name:   "groupcache_cache_items",
-			Labels: prometheus.Labels{"type": "main"},
-		},
-		{
-			Name:   "groupcache_cache_items",
-			Labels: prometheus.Labels{"type": "hot"},
-		},
-		{
-			Name: "groupcache_get_from_peers_latency_lower",
-		},
-		{
-			Name: "groupcache_gets_total",
-		},
-		{
-			Name: "groupcache_hits_total",
-		},
-		{
-			Name: "groupcache_loads_deduped_total",
-		},
-		{
-			Name: "groupcache_loads_total",
-		},
-		{
-			Name: "groupcache_local_load_errs_total",
-		},
-		{
-			Name: "groupcache_local_loads_total",
-		},
-		{
-			Name: "groupcache_peer_errors_total",
-		},
-		{
-			Name: "groupcache_peer_loads_total",
-		},
-		{
-			Name: "groupcache_server_requests_total",
-		},
+		{Name: "groupcache_cache_bytes", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_bytes", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_cache_evictions_nonexpired_total", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_evictions_nonexpired_total", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_cache_evictions_total", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_evictions_total", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_cache_gets_total", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_gets_total", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_cache_hits_total", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_hits_total", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_cache_items", Labels: prometheus.Labels{"type": "main"}},
+		{Name: "groupcache_cache_items", Labels: prometheus.Labels{"type": "hot"}},
+		{Name: "groupcache_get_from_peers_latency_lower"},
+		{Name: "groupcache_gets_total"},
+		{Name: "groupcache_hits_total"},
+		{Name: "groupcache_loads_deduped_total"},
+		{Name: "groupcache_loads_total"},
+		{Name: "groupcache_local_load_errs_total"},
+		{Name: "groupcache_local_loads_total"},
+		{Name: "groupcache_peer_errors_total"},
+		{Name: "groupcache_peer_loads_total"},
+		{Name: "groupcache_server_requests_total"},
 	}
 	tp := new(expfmt.TextParser)
 	mfs, err := tp.TextToMetricFamilies(bytes.NewReader(content))
@@ -173,7 +117,7 @@ func TestExporter(t *testing.T) {
 	for _, expectedMetric := range expectedMetrics {
 		testName := fmt.Sprintf("Metric %s{%s}", expectedMetric.Name, labelsToString(expectedMetric.Labels))
 		t.Run(testName, func(t *testing.T) {
-			assertMetricPresent(t, expectedMetric, mfs)
+			assertContainsMetric(t, expectedMetric, mfs)
 		})
 	}
 
@@ -235,7 +179,7 @@ func getURL(ctx context.Context, u string) (*http.Response, error) {
 }
 
 // Assert expected metric name and labels are present.
-func assertMetricPresent(t *testing.T, expected MetricInfo, mfs map[string]*promdto.MetricFamily) {
+func assertContainsMetric(t *testing.T, expected MetricInfo, mfs map[string]*promdto.MetricFamily) {
 	mf, ok := mfs[expected.Name]
 	if !assert.True(t, ok, "Metric not found") {
 		return
