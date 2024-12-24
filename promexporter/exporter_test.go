@@ -48,7 +48,7 @@ func TestExporter(t *testing.T) {
 		return nil
 	}
 	group := groupcache.NewGroup("test", 10_000, groupcache.GetterFunc(getter))
-	gcexporter := promexporter.NewExporter("", nil)
+	gcexporter := promexporter.NewExporter()
 	prometheus.MustRegister(gcexporter)
 
 	// Setup HTTP server.

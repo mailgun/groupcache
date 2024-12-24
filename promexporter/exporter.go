@@ -8,6 +8,8 @@ import (
 
 // Exporter implements interface prometheus.Collector to extract metrics from groupcache.
 type Exporter struct {
+	namespace                     string
+	labels                        map[string]string
 	groupGets                     *prometheus.Desc
 	groupHits                     *prometheus.Desc
 	groupGetFromPeersLatencyLower *prometheus.Desc
@@ -79,109 +81,124 @@ type GroupStatistics interface {
 	HotCacheEvictionsNonExpired() int64
 }
 
+type Option interface {
+	apply(*Exporter)
+}
+
+type namespaceOption struct {
+	namespace string
+}
+
+type labelsOption struct {
+	labels map[string]string
+}
+
 // NewExporter creates Exporter.
 // namespace is usually the empty string.
-func NewExporter(namespace string, labels map[string]string) *Exporter {
+func NewExporter(opts ...Option) *Exporter {
 	const subsystem = "groupcache"
 
-	return &Exporter{
-		groupGets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "gets_total"),
-			"Count of cache gets (including from peers, from either main or hot cache)",
-			[]string{"group"},
-			labels,
-		),
-		groupHits: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "hits_total"),
-			"Count of cache hits (from either main or hot cache)",
-			[]string{"group"},
-			labels,
-		),
-		groupGetFromPeersLatencyLower: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "get_from_peers_latency_lower"),
-			"Represent slowest duration to request value from peers",
-			[]string{"group"},
-			labels,
-		),
-		groupPeerLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "peer_loads_total"),
-			"Count of loads or cache hits from peers",
-			[]string{"group"},
-			labels,
-		),
-		groupPeerErrors: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "peer_errors_total"),
-			"Count of errors from peers",
-			[]string{"group"},
-			labels,
-		),
-		groupLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "loads_total"),
-			"Count of (gets - hits)",
-			[]string{"group"},
-			labels,
-		),
-		groupLoadsDeduped: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "loads_deduped_total"),
-			"Count of loads after singleflight",
-			[]string{"group"},
-			labels,
-		),
-		groupLocalLoads: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "local_loads_total"),
-			"Count of loads from local cache",
-			[]string{"group"},
-			labels,
-		),
-		groupLocalLoadErrs: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "local_load_errs_total"),
-			"Count of load errors from local cache",
-			[]string{"group"},
-			labels,
-		),
-		groupServerRequests: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "server_requests_total"),
-			"Count of gets received from peers",
-			[]string{"group"},
-			labels,
-		),
-		cacheBytes: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_bytes"),
-			"Gauge of current bytes in use",
-			[]string{"group", "type"},
-			labels,
-		),
-		cacheItems: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_items"),
-			"Gauge of current items in use",
-			[]string{"group", "type"},
-			labels,
-		),
-		cacheGets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_gets_total"),
-			"Count of cache gets",
-			[]string{"group", "type"},
-			labels,
-		),
-		cacheHits: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_hits_total"),
-			"Count of cache hits",
-			[]string{"group", "type"},
-			labels,
-		),
-		cacheEvictions: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_total"),
-			"Count of cache evictions",
-			[]string{"group", "type"},
-			labels,
-		),
-		cacheEvictionsNonExpired: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, subsystem, "cache_evictions_nonexpired_total"),
-			"Count of cache evictions for non-expired keys due to memory full",
-			[]string{"group", "type"},
-			labels,
-		),
+	e := new(Exporter)
+	for _, opt := range opts {
+		opt.apply(e)
 	}
+	e.groupGets = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "gets_total"),
+		"Count of cache gets (including from peers, from either main or hot cache)",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupHits = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "hits_total"),
+		"Count of cache hits (from either main or hot cache)",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupGetFromPeersLatencyLower = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "get_from_peers_latency_lower"),
+		"Represent slowest duration to request value from peers",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupPeerLoads = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "peer_loads_total"),
+		"Count of loads or cache hits from peers",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupPeerErrors = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "peer_errors_total"),
+		"Count of errors from peers",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupLoads = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "loads_total"),
+		"Count of (gets - hits)",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupLoadsDeduped = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "loads_deduped_total"),
+		"Count of loads after singleflight",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupLocalLoads = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "local_loads_total"),
+		"Count of loads from local cache",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupLocalLoadErrs = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "local_load_errs_total"),
+		"Count of load errors from local cache",
+		[]string{"group"},
+		e.labels,
+	)
+	e.groupServerRequests = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "server_requests_total"),
+		"Count of gets received from peers",
+		[]string{"group"},
+		e.labels,
+	)
+	e.cacheBytes = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_bytes"),
+		"Gauge of current bytes in use",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	e.cacheItems = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_items"),
+		"Gauge of current items in use",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	e.cacheGets = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_gets_total"),
+		"Count of cache gets",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	e.cacheHits = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_hits_total"),
+		"Count of cache hits",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	e.cacheEvictions = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_evictions_total"),
+		"Count of cache evictions",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	e.cacheEvictionsNonExpired = prometheus.NewDesc(
+		prometheus.BuildFQName(e.namespace, subsystem, "cache_evictions_nonexpired_total"),
+		"Count of cache evictions for non-expired keys due to memory full",
+		[]string{"group", "type"},
+		e.labels,
+	)
+	return e
 }
 
 func (e *Exporter) getStatGroups() []GroupStatistics {
@@ -252,4 +269,20 @@ func (e *Exporter) collectCacheStats(ch chan<- prometheus.Metric, stats GroupSta
 	ch <- prometheus.MustNewConstMetric(e.cacheHits, prometheus.CounterValue, float64(stats.HotCacheHits()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheEvictions, prometheus.CounterValue, float64(stats.HotCacheEvictions()), stats.Name(), "hot")
 	ch <- prometheus.MustNewConstMetric(e.cacheEvictionsNonExpired, prometheus.CounterValue, float64(stats.HotCacheEvictionsNonExpired()), stats.Name(), "hot")
+}
+
+func WithNamspace(namespace string) Option {
+	return &namespaceOption{namespace: namespace}
+}
+
+func (o *namespaceOption) apply(e *Exporter) {
+	e.namespace = o.namespace
+}
+
+func WithLabels(labels map[string]string) Option {
+	return &labelsOption{labels: labels}
+}
+
+func (o *labelsOption) apply(e *Exporter) {
+	e.labels = o.labels
 }
