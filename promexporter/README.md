@@ -4,7 +4,18 @@ This exporter extracts statistics from groupcache instances and exports Promethe
 
 # Example
 
-Full example: [examples](examples)
+```go
+import (
+	"github.com/mailgun/groupcache/v2"
+	"github.com/mailgun/groupcache/v2/promexporter"
+)
+
+// ...
+
+group := groupcache.NewGroup("mygroup", cacheSize, getter)
+collector := promexporter.NewExporter("", nil, group)
+prometheus.MustRegister(collector)
+```
 
 ## Exported Metrics
 
