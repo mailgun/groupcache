@@ -10,6 +10,7 @@ import (
 type Exporter struct {
 	namespace                     string
 	labels                        map[string]string
+	getGroups                     func() []*groupcache.Group
 	groupGets                     *prometheus.Desc
 	groupHits                     *prometheus.Desc
 	groupGetFromPeersLatencyLower *prometheus.Desc
@@ -93,12 +94,18 @@ type labelsOption struct {
 	labels map[string]string
 }
 
+type groupsOption struct {
+	groupsFn func() []*groupcache.Group
+}
+
 // NewExporter creates Exporter.
 // namespace is usually the empty string.
 func NewExporter(opts ...Option) *Exporter {
 	const subsystem = "groupcache"
 
-	e := new(Exporter)
+	e := &Exporter{
+		getGroups: groupcache.GetGroups,
+	}
 	for _, opt := range opts {
 		opt.apply(e)
 	}
@@ -202,7 +209,7 @@ func NewExporter(opts ...Option) *Exporter {
 }
 
 func (e *Exporter) getStatGroups() []GroupStatistics {
-	groups := groupcache.GetGroups()
+	groups := e.getGroups()
 	statgroups := make([]GroupStatistics, 0, len(groups))
 	for _, g := range groups {
 		statgroups = append(statgroups, newStatsAdapter(g))
@@ -271,7 +278,8 @@ func (e *Exporter) collectCacheStats(ch chan<- prometheus.Metric, stats GroupSta
 	ch <- prometheus.MustNewConstMetric(e.cacheEvictionsNonExpired, prometheus.CounterValue, float64(stats.HotCacheEvictionsNonExpired()), stats.Name(), "hot")
 }
 
-func WithNamspace(namespace string) Option {
+// Set namespace of exported metrics.  Namespace serves as the prefix to metric names, like: `<namespace>_groupcache_cache_bytes`.
+func WithNamespace(namespace string) Option {
 	return &namespaceOption{namespace: namespace}
 }
 
@@ -279,10 +287,20 @@ func (o *namespaceOption) apply(e *Exporter) {
 	e.namespace = o.namespace
 }
 
+// Set labels added to exported metrics.
 func WithLabels(labels map[string]string) Option {
 	return &labelsOption{labels: labels}
 }
 
 func (o *labelsOption) apply(e *Exporter) {
 	e.labels = o.labels
+}
+
+// Set function used to get groups to export.  Called on every scrape.
+func WithGroups(groupsFn func() []*groupcache.Group) Option {
+	return &groupsOption{groupsFn: groupsFn}
+}
+
+func (o *groupsOption) apply(e *Exporter) {
+	e.getGroups = o.groupsFn
 }
