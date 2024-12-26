@@ -198,6 +198,14 @@ func TestExporterWithLabels(t *testing.T) {
 	}
 }
 
+type TestGroupProvider struct {
+	groups []*groupcache.Group
+}
+
+func (gp *TestGroupProvider) Groups() []*groupcache.Group {
+	return gp.groups
+}
+
 func TestExporterWithGroups(t *testing.T) {
 	// Given
 	var wg sync.WaitGroup
@@ -213,9 +221,10 @@ func TestExporterWithGroups(t *testing.T) {
 		groupcache.DeregisterGroup(group2.Name())
 		groupcache.DeregisterGroup(group3.Name())
 	}()
-	gcexporter := promexporter.NewExporter(promexporter.WithGroups(func() []*groupcache.Group {
-		return []*groupcache.Group{group1, group2}
-	}))
+	groupProvider := &TestGroupProvider{
+		groups: []*groupcache.Group{group1, group2},
+	}
+	gcexporter := promexporter.NewExporter(promexporter.WithGroups(groupProvider))
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(gcexporter)
 

@@ -10,7 +10,7 @@ import (
 type Exporter struct {
 	namespace                     string
 	labels                        map[string]string
-	getGroups                     func() []*groupcache.Group
+	groupProvider                 GroupProvider
 	groupGets                     *prometheus.Desc
 	groupHits                     *prometheus.Desc
 	groupGetFromPeersLatencyLower *prometheus.Desc
@@ -95,8 +95,14 @@ type labelsOption struct {
 }
 
 type groupsOption struct {
-	groupsFn func() []*groupcache.Group
+	provider GroupProvider
 }
+
+type GroupProvider interface {
+	Groups() []*groupcache.Group
+}
+
+type allGroupsProvider struct{}
 
 // NewExporter creates Exporter.
 // namespace is usually the empty string.
@@ -104,7 +110,7 @@ func NewExporter(opts ...Option) *Exporter {
 	const subsystem = "groupcache"
 
 	e := &Exporter{
-		getGroups: groupcache.GetGroups,
+		groupProvider: new(allGroupsProvider),
 	}
 	for _, opt := range opts {
 		opt.apply(e)
@@ -209,7 +215,7 @@ func NewExporter(opts ...Option) *Exporter {
 }
 
 func (e *Exporter) getStatGroups() []GroupStatistics {
-	groups := e.getGroups()
+	groups := e.groupProvider.Groups()
 	statgroups := make([]GroupStatistics, 0, len(groups))
 	for _, g := range groups {
 		statgroups = append(statgroups, newStatsAdapter(g))
@@ -297,10 +303,14 @@ func (o *labelsOption) apply(e *Exporter) {
 }
 
 // Set function used to get groups to export.  Called on every scrape.
-func WithGroups(groupsFn func() []*groupcache.Group) Option {
-	return &groupsOption{groupsFn: groupsFn}
+func WithGroups(groups GroupProvider) Option {
+	return &groupsOption{provider: groups}
 }
 
 func (o *groupsOption) apply(e *Exporter) {
-	e.getGroups = o.groupsFn
+	e.groupProvider = o.provider
+}
+
+func (gp *allGroupsProvider) Groups() []*groupcache.Group {
+	return groupcache.GetGroups()
 }

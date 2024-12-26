@@ -8,11 +8,12 @@ This exporter extracts statistics from groupcache instances and exports Promethe
 import (
 	"github.com/mailgun/groupcache/v2"
 	"github.com/mailgun/groupcache/v2/promexporter"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // ...
 
-collector := promexporter.NewExporter("", nil)
+collector := promexporter.NewExporter()
 prometheus.MustRegister(collector)
 
 // Collector will discover newly created group.
