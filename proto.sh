@@ -13,4 +13,4 @@ protoc -I=$PROTO_DIR \
 
 protoc -I=$PROTO_DIR \
    --go_out=. \
-    $PROTO_DIR/example.proto
+    $PROTO_DIR/example.proto && mv ./example.pb.go ./example_pb_test.go

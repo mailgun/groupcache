@@ -95,7 +95,9 @@ func TestHTTPPool(t *testing.T) {
 	wg.Wait()
 
 	// Use a dummy self address so that we don't handle gets in-process.
-	p := NewHTTPPool("should-be-ignored")
+	p, mux := newTestHTTPPool("should-be-ignored")
+	defer mux.Close()
+
 	p.Set(addrToURL(childAddr)...)
 
 	// Dummy getter function. Gets should go to children only.
@@ -219,7 +221,8 @@ func testKeys(n int) (keys []string) {
 func beChildForTestHTTPPool(t *testing.T) {
 	addrs := strings.Split(*peerAddrs, ",")
 
-	p := NewHTTPPool("http://" + addrs[*peerIndex])
+	p, mux := newTestHTTPPool("http://" + addrs[*peerIndex])
+	defer mux.Close()
 	p.Set(addrToURL(addrs)...)
 
 	getter := GetterFunc(func(ctx context.Context, key string, dest Sink) error {
@@ -284,5 +287,47 @@ func awaitAddrReady(t *testing.T, addr string, wg *sync.WaitGroup) {
 			delay = max
 		}
 		time.Sleep(delay)
+	}
+}
+
+type serveMux struct {
+	mux      *http.ServeMux
+	handlers map[string]http.Handler
+}
+
+func newTestHTTPPool(self string) (*HTTPPool, *serveMux) {
+	httpPoolMade, portPicker = false, nil // Testing only
+
+	p := NewHTTPPoolOpts(self, nil)
+	sm := &serveMux{
+		mux:      http.NewServeMux(),
+		handlers: make(map[string]http.Handler),
+	}
+
+	sm.handlers[p.opts.BasePath] = p
+
+	return p, sm
+}
+
+func (s *serveMux) Handle(pattern string, handler http.Handler) {
+	s.handlers[pattern] = handler
+	s.mux.Handle(pattern, handler)
+}
+
+func (s *serveMux) Close() {
+	for pattern := range s.handlers {
+		delete(s.handlers, pattern)
+	}
+}
+
+func (s *serveMux) RemoveHandle(pattern string) {
+	delete(s.handlers, pattern)
+}
+
+func (s *serveMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.handlers[r.URL.Path]; ok {
+		s.mux.ServeHTTP(w, r)
+	} else {
+		http.NotFound(w, r)
 	}
 }

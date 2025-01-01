@@ -14,29 +14,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-syntax = "proto2";
+syntax = "proto3";
 
 package groupcachepb;
+option go_package = "./";
 
 message GetRequest {
-  required string group = 1;
-  required string key = 2; // not actually required/guaranteed to be UTF-8
+  string group = 1;
+  string key = 2; // not actually required/guaranteed to be UTF-8
 }
 
 message GetResponse {
-  optional bytes value = 1;
-  optional double minute_qps = 2;
-  optional int64 expire = 3;
+  bytes value = 1;
+  double minute_qps = 2;
+  int64 expire = 3;
 }
 
 message SetRequest {
-  required string group = 1;
-  required string key = 2;
-  optional bytes value = 3;
-  optional int64 expire = 4;
+  string group = 1;
+  string key = 2;
+  bytes value = 3;
+  int64 expire = 4;
+  bool hotCache = 5;
 }
 
 service GroupCache {
   rpc Get(GetRequest) returns (GetResponse) {
-  };
+  }
 }
