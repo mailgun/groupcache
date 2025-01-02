@@ -16,17 +16,21 @@ limitations under the License.
 
 syntax = "proto2";
 
+option go_package = "github.com/mailgun/groupcache/v2/groupcachepb";
+
 package groupcachepb;
 
 message GetRequest {
   required string group = 1;
   required string key = 2; // not actually required/guaranteed to be UTF-8
+  required int64 generation = 3;
 }
 
 message GetResponse {
   optional bytes value = 1;
   optional double minute_qps = 2;
   optional int64 expire = 3;
+  optional int64 generation = 4;
 }
 
 message SetRequest {
@@ -34,6 +38,7 @@ message SetRequest {
   required string key = 2;
   optional bytes value = 3;
   optional int64 expire = 4;
+  optional int64 generation = 5;
 }
 
 service GroupCache {

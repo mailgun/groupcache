@@ -31,15 +31,22 @@ import (
 // A ByteView is meant to be used as a value type, not
 // a pointer (like a time.Time).
 type ByteView struct {
+	e time.Time
+	s string
 	// If b is non-nil, b is used, else s is used.
 	b []byte
-	s string
-	e time.Time
+	// generation is an optional field, used only in certain operations
+	g int64
 }
 
-// Returns the expire time associated with this view
+// Expire returns the expire time associated with this view
 func (v ByteView) Expire() time.Time {
 	return v.e
+}
+
+// Generation returns the generation associated with this cache view
+func (v ByteView) Generation() int64 {
+	return v.g
 }
 
 // Len returns the view's length.
