@@ -106,8 +106,31 @@ func GetGroups() []*Group {
 // completes.
 //
 // The group name must be unique for each getter.
-func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
-	return newGroup(name, cacheBytes, getter, nil)
+func NewGroup(name string, cacheBytes int64, getter Getter, opts ...Option) *Group {
+	group := newGroup(name, cacheBytes, getter, nil)
+	for _, opt := range opts {
+		opt.apply(group)
+	}
+	return group
+}
+
+// Option for NewGroup().
+type Option interface {
+	apply(*Group)
+}
+
+type withPruneIntervalOption struct {
+	pruneInterval int
+}
+
+func (o *withPruneIntervalOption) apply(group *Group) {
+	group.mainCache.pruneInterval = o.pruneInterval
+	group.hotCache.pruneInterval = o.pruneInterval
+}
+
+// Pass prune interval option for NewGroup().
+func WithPruneInterval(pruneInterval int) Option {
+	return &withPruneIntervalOption{pruneInterval: pruneInterval}
 }
 
 // DeregisterGroup removes group from group pool
@@ -608,11 +631,12 @@ var NowFunc lru.NowFunc = time.Now
 // makes values always be ByteView, and counts the size of all keys and
 // values.
 type cache struct {
-	mu         sync.RWMutex
-	nbytes     int64 // of all keys and values
-	lru        *lru.Cache
-	nhit, nget int64
-	nevict     int64 // number of evictions
+	mu            sync.RWMutex
+	nbytes        int64 // of all keys and values
+	lru           *lru.Cache
+	nhit, nget    int64
+	nevict        int64 // number of evictions
+	pruneInterval int
 }
 
 func (c *cache) stats() CacheStats {
@@ -638,6 +662,7 @@ func (c *cache) add(key string, value ByteView) {
 				c.nbytes -= int64(len(key.(string))) + int64(val.Len())
 				c.nevict++
 			},
+			PruneInterval: c.pruneInterval,
 		}
 	}
 	c.lru.Add(key, value, value.Expire())

@@ -74,6 +74,9 @@ func (c *Cache) Add(key Key, value interface{}, expire time.Time) {
 	if c.cache == nil {
 		c.cache = make(map[interface{}]*list.Element)
 		c.ll = list.New()
+	} else if c.PruneInterval > 0 && c.removeCounter >= c.PruneInterval {
+		c.removeCounter = 0
+		c.Prune()
 	}
 	if ee, ok := c.cache[key]; ok {
 		eee := ee.Value.(*entry)
@@ -136,13 +139,7 @@ func (c *Cache) removeElement(e *list.Element) {
 	c.ll.Remove(e)
 	kv := e.Value.(*entry)
 	delete(c.cache, kv.key)
-	if c.PruneInterval > 0 {
-		c.removeCounter++
-		if c.removeCounter >= c.PruneInterval {
-			c.removeCounter = 0
-			c.Prune()
-		}
-	}
+	c.removeCounter++
 	if c.OnEvicted != nil {
 		c.OnEvicted(kv.key, kv.value)
 	}
