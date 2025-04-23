@@ -39,8 +39,13 @@ type Cache struct {
 	// Defaults to time.Now()
 	Now NowFunc
 
-	ll    *list.List
-	cache map[interface{}]*list.Element
+	// PruneInterval sets number of cache removals before internal map is pruned.
+	// If set to zero, no pruning is performed.
+	PruneInterval int
+
+	ll            *list.List
+	cache         map[interface{}]*list.Element
+	removeCounter int
 }
 
 // A Key may be any value that is comparable. See http://golang.org/ref/spec#Comparison_operators
@@ -131,6 +136,13 @@ func (c *Cache) removeElement(e *list.Element) {
 	c.ll.Remove(e)
 	kv := e.Value.(*entry)
 	delete(c.cache, kv.key)
+	if c.PruneInterval > 0 {
+		c.removeCounter++
+		if c.removeCounter >= c.PruneInterval {
+			c.removeCounter = 0
+			c.Prune()
+		}
+	}
 	if c.OnEvicted != nil {
 		c.OnEvicted(kv.key, kv.value)
 	}
@@ -154,4 +166,17 @@ func (c *Cache) Clear() {
 	}
 	c.ll = nil
 	c.cache = nil
+}
+
+// Prune cache state to flush map storage from previously deleted keys.
+func (c *Cache) Prune() {
+	if c.cache == nil {
+		return
+	}
+	newCache := make(map[any]*list.Element)
+	for k, v := range c.cache {
+		newCache[k] = v
+		delete(c.cache, k)
+	}
+	c.cache = newCache
 }
